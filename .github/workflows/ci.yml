@@ -1,0 +1,36 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test-and-package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version
+      - name: Test
+        run: swift test
+      - name: Build universal app
+        run: bash scripts/build-app.sh --universal
+      - name: Validate packaged app
+        run: |
+          codesign --verify --deep --strict dist/LessBar.app
+          ARCHS="$(lipo -archs dist/LessBar.app/Contents/MacOS/LessBar)"
+          [[ " $ARCHS " == *" arm64 "* && " $ARCHS " == *" x86_64 "* ]]
+          test -d dist/LessBar.app/Contents/Resources/LessBar_LessBar.bundle
+          plutil -lint dist/LessBar.app/Contents/Info.plist
+      - name: Archive development build
+        run: ditto -c -k --sequesterRsrc --keepParent dist/LessBar.app dist/LessBar-development.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LessBar-development-universal
+          path: dist/LessBar-development.zip
+          retention-days: 14

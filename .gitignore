@@ -1,0 +1,11 @@
+.build/
+dist/
+.DS_Store
+.swiftpm/
+output/
+.env
+.env.*
+*.p12
+*.p8
+*.key
+*.mobileprovision

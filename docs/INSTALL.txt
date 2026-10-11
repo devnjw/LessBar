@@ -1,0 +1,24 @@
+LessBar
+
+Drag LessBar.app to Applications, then open it from Applications.
+Hold Command and drag the menu bar chevron to choose the boundary.
+Click to hide/show icons on its left. Right-click for Settings or Quit.
+Reopen LessBar from Applications if you need to restore hidden icons.
+
+Requires macOS 13–26. Hiding is disabled on macOS 27 and later.
+Apple Silicon + Intel. English + Korean.
+See release notes for testing coverage and notarization status.
+A file named "unnotarized" is a developer preview, not a notarized release.
+Do not disable Gatekeeper to install LessBar.
+
+To update: quit LessBar, replace the app in Applications, then reopen it.
+To uninstall: turn off Launch at Login, quit LessBar, then move it to Trash.
+
+설치: LessBar.app을 Applications로 옮긴 뒤 응용 프로그램에서 실행하세요.
+⌘ 키를 누르고 메뉴 막대의 꺾쇠를 옮겨 숨길 경계를 정하세요.
+클릭: 숨기기/펼치기. 오른쪽 클릭: 설정/종료.
+복구: 응용 프로그램에서 LessBar를 다시 실행하세요.
+macOS 13–26 대상. macOS 27 이상에서는 숨김 기능이 비활성화됩니다.
+
+https://github.com/devnjw/LessBar
+MIT License — see LICENSE.txt.

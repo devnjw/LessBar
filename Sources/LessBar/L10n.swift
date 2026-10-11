@@ -1,0 +1,37 @@
+import Foundation
+
+/// Shared localized strings for AppKit and SwiftUI, bundled with the app.
+enum L10n {
+    // Prefer installed resources; SwiftPM lookup varies between toolchains.
+    private static let bundle: Bundle = {
+        if let url = Bundle.main.resourceURL?.appendingPathComponent("LessBar_LessBar.bundle"),
+           let bundled = Bundle(url: url) { return bundled }
+        return .module
+    }()
+    static var settings: String { text("settings") }
+    static var settingsTitle: String { text("settingsTitle") }
+    static var quit: String { text("quit") }
+    static var hideIcons: String { text("hideIcons") }
+    static var showIcons: String { text("showIcons") }
+    static var recoveryTitle: String { text("recoveryTitle") }
+    static var toggleTooltip: String { text("toggleTooltip") }
+    static var recoveryTooltip: String { text("recoveryTooltip") }
+    static var positionUnavailable: String { text("positionUnavailable") }
+    static var positionRecovery: String { text("positionRecovery") }
+    static var ok: String { text("ok") }
+    static var guideTitle: String { text("guideTitle") }
+    static var dragInstruction: String { text("dragInstruction") }
+    static var launchAtLogin: String { text("launchAtLogin") }
+    static var unsupported: String { text("unsupported") }
+    static var hiddenIcons: String { text("hiddenIcons") }
+    static var visibleIcons: String { text("visibleIcons") }
+    static var guideAccessibility: String { text("guideAccessibility") }
+    static var collapsed: String { text("collapsed") }
+    static var expanded: String { text("expanded") }
+    static var loginApproval: String { text("loginApproval") }
+    static var loginFailed: String { text("loginFailed") }
+
+    private static func text(_ key: String) -> String {
+        NSLocalizedString(key, bundle: bundle, comment: "")
+    }
+}
