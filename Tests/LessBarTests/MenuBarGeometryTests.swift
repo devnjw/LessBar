@@ -15,6 +15,33 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertEqual(anchors.map { $0.control.maxX }, [1480, 3400])
     }
 
+    func testNotchedLaptopAnchorUsesNativeMenuBarHeight() {
+        // Captured on the built-in display after disconnecting external displays:
+        // native status windows are 33pt high, while the notch safe area is 32pt.
+        let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+        let rightArea = CGRect(x: 956, y: 1085, width: 772, height: 32)
+        let boundary = CGRect(x: 1301, y: 1084, width: 1, height: 33)
+        let anchors = MenuBarGeometry.recoveryAnchors(
+            windows: [boundary], screens: [(1, screen, rightArea)])
+        XCTAssertEqual(anchors.map(\.displayID), [1])
+        let anchor = anchors.first
+        XCTAssertEqual(anchor?.control.height, 33)
+        XCTAssertEqual(anchor?.available.minX, rightArea.minX)
+        XCTAssertEqual(anchor?.available.maxX, rightArea.maxX)
+        XCTAssertEqual(anchor?.available.minY, boundary.minY)
+        XCTAssertEqual(anchor?.available.maxY, boundary.maxY)
+        XCTAssertEqual(anchor.map { $0.available.contains($0.control) }, true)
+    }
+
+    func testNotchedLaptopAnchorCannotCrossHorizontalSafeArea() {
+        let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
+        let rightArea = CGRect(x: 956, y: 1085, width: 772, height: 32)
+        let anchors = MenuBarGeometry.recoveryAnchors(
+            windows: [CGRect(x: 956, y: 1084, width: 1, height: 33)],
+            screens: [(1, screen, rightArea)])
+        XCTAssertTrue(anchors.isEmpty)
+    }
+
     func testVerticalNegativeAndNotchedDisplaysUseTheirOwnTopAndSafeArea() {
         let upper = CGRect(x: -1440, y: 1080, width: 1440, height: 900)
         let area = CGRect(x: -680, y: 1950, width: 680, height: 30)

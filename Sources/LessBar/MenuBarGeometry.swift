@@ -31,7 +31,12 @@ enum MenuBarGeometry {
             guard let window = candidates.max(by: { $0.maxX < $1.maxX }) else { return nil }
             let control = CGRect(x: window.maxX - LayoutSafety.controlWidth,
                 y: window.minY, width: LayoutSafety.controlWidth, height: window.height)
-            let available = rightArea ?? CGRect(x: screen.midX, y: screen.minY,
+            // The notch safe area can be 32pt high while the native menu bar is
+            // 33pt high. Preserve the safe horizontal edges and use the actual
+            // status window height so the one-point lower edge does not reject it.
+            let available = rightArea.map {
+                CGRect(x: $0.minX, y: window.minY, width: $0.width, height: window.height)
+            } ?? CGRect(x: screen.midX, y: screen.minY,
                 width: screen.width / 2, height: screen.height)
             guard available.contains(control) else { return nil }
             return DisplayAnchor(displayID: id, control: control, available: available)
