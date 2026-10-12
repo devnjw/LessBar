@@ -21,13 +21,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        configureApplicationMenu()
         Preferences.migratePrototypeSettings()
-        menuBar = MenuBarController(onSettings: { [weak self] in self?.showSettings() })
+        menuBar = MenuBarController(preferences: preferences, onSettings: { [weak self] in self?.showSettings() })
         if !UserDefaults.standard.bool(forKey: "hasShownSetup") {
             showSettings()
             UserDefaults.standard.set(true, forKey: "hasShownSetup")
         }
     }
+
+    private func configureApplicationMenu() {
+        let menu = NSMenu()
+        let appItem = NSMenuItem(title: "LessBar", action: nil, keyEquivalent: "")
+        let actions = NSMenu(title: "LessBar")
+        let settings = actions.addItem(withTitle: L10n.settings, action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        let quit = actions.addItem(withTitle: L10n.quit, action: #selector(quit), keyEquivalent: "q")
+        quit.target = self
+        appItem.submenu = actions
+        menu.addItem(appItem)
+        NSApp.mainMenu = menu
+    }
+
+    @objc private func openSettings() { showSettings() }
+    @objc private func quit() { NSApp.terminate(nil) }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showSettings()
@@ -40,7 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         preferences.refreshLoginStatus()
         if settingsWindow == nil {
             let view = SettingsView(preferences: preferences, state: menuBar.state,
-                supported: menuBar.isSupported, toggle: { [weak menuBar] in menuBar?.toggleVisibility() })
+                supported: menuBar.isSupported, toggle: { [weak menuBar] in menuBar?.toggleVisibility() },
+                temporaryShow: { [weak menuBar] in menuBar?.temporarilyShowAll() },
+                requestAccessibility: { [weak menuBar] in menuBar?.requestAccessibility() })
             let window = NSWindow(contentViewController: NSHostingController(rootView: view))
             window.title = L10n.settingsTitle
             window.titleVisibility = .hidden

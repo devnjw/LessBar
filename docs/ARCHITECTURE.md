@@ -22,7 +22,17 @@ During initial settling or an unsafe snapshot, check every 75 ms. A continuous u
 
 The recovery controller owns both timers. Revealing invalidates them, clears the session and removes the panel. Delayed clicks are checked against panel identity; cancelled retry callbacks are checked against timer identity. Recovery always reveals rather than toggles, preventing stale callbacks from collapsing a new session.
 
-The engine is the source of truth for the published state. Both native and settings controls use the same transition path. Timers only run while collapsed.
+The engine is the source of truth for the published state. Both native and settings controls use the same transition path. The recovery timers only run while collapsed. The input coordinator samples pointer/modifier state every 50 ms and refreshes geometry every 200 ms; it never observes typed key content.
+
+## Shared multi-display interaction
+
+`InteractionPolicy` is a pure monotonic-time state machine. Preferences and visibility are shared by all displays; hover dwell resets when changing display. `MenuBarGeometry` excludes application-menu rectangles, status items and the notch. Accessibility is used only to read menu geometry; unknown geometry cannot trigger reveal.
+
+`LengthMenuBarEngine` retains native boundaries and preserves their autosaved positions. Native content-width constraints and padding are synchronized for every retained mirrored window; setting NSStatusItem.length alone changes only the active display on the tested macOS 26 build. Invisible expanded boundaries use a one-point window. Native status windows are tracked through AppKit rather than owner PID, because Window Server reports them under Control Center. External collision checks exclude native window IDs or an exact matching frame.
+
+`RecoveryController` creates one collision-checked panel per display and refuses partial display coverage. With dividers off, these panels stay ordered out. Display changes cancel stale work, reveal while layout settles, then restore the shared collapsed state. Closing and reopening settings remains the recovery route with invisible controls.
+
+Application-menu hiding temporarily activates a minimal application menu only when needed. It is disabled under fullscreen/system-hidden menu bars and restores the prior application only if LessBar still owns focus. Temporary all-section reveal restores the prior normal collapsed state at expiry.
 
 ## System constraints
 
