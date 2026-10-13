@@ -5,6 +5,26 @@ struct DisplayAnchor: Equatable {
     let displayID: CGDirectDisplayID
     let control: CGRect
     let available: CGRect
+    var imageFrame: CGRect? = nil
+}
+
+struct StatusItemGeometry {
+    let windowFrame: CGRect
+    var imageFrame: CGRect? = nil
+
+    @MainActor static func capture(_ window: NSWindow) -> Self {
+        func findButton(in view: NSView) -> NSStatusBarButton? {
+            if let button = view as? NSStatusBarButton { return button }
+            return view.subviews.lazy.compactMap { findButton(in: $0) }.first
+        }
+        guard let content = window.contentView, let button = findButton(in: content) else {
+            return Self(windowFrame: window.frame)
+        }
+        let imageFrame = button.image == nil ? nil : button.cell.map {
+            window.convertToScreen(button.convert($0.imageRect(forBounds: button.bounds), to: nil))
+        }
+        return Self(windowFrame: window.frame, imageFrame: imageFrame)
+    }
 }
 
 enum MenuBarGeometry {
@@ -22,14 +42,19 @@ enum MenuBarGeometry {
     }
 
     /// The right edge stays inside the owning display even for an oversized item.
-    static func recoveryAnchors(windows: [CGRect], screens: [(UInt32, CGRect, CGRect?)]) -> [DisplayAnchor] {
+    static func recoveryAnchors(items: [StatusItemGeometry], screens: [(UInt32, CGRect, CGRect?)]) -> [DisplayAnchor] {
         screens.compactMap { id, screen, rightArea in
-            let candidates = windows.filter {
-                $0.maxX > screen.minX && $0.maxX <= screen.maxX &&
-                abs($0.maxY - screen.maxY) <= 4 && $0.height > 0
+            let candidates = items.filter {
+                $0.windowFrame.maxX > screen.minX && $0.windowFrame.maxX <= screen.maxX &&
+                abs($0.windowFrame.maxY - screen.maxY) <= 4 && $0.windowFrame.height > 0
             }
-            guard let window = candidates.max(by: { $0.maxX < $1.maxX }) else { return nil }
-            let control = CGRect(x: window.maxX - LayoutSafety.controlWidth,
+            guard let item = candidates.max(by: { $0.windowFrame.maxX < $1.windowFrame.maxX }) else { return nil }
+            let window = item.windowFrame
+            // Preserve the real native image center, including AppKit's menu-bar
+            // padding and baseline. Hidden/oversized boundaries have no artwork.
+            let imageFrame = item.imageFrame.flatMap { window.contains($0) ? $0 : nil }
+            let centerX = imageFrame?.midX ?? (window.maxX - LayoutSafety.controlWidth / 2)
+            let control = CGRect(x: centerX - LayoutSafety.controlWidth / 2,
                 y: window.minY, width: LayoutSafety.controlWidth, height: window.height)
             // The notch safe area can be 32pt high while the native menu bar is
             // 33pt high. Preserve the safe horizontal edges and use the actual
@@ -39,7 +64,7 @@ enum MenuBarGeometry {
             } ?? CGRect(x: screen.midX, y: screen.minY,
                 width: screen.width / 2, height: screen.height)
             guard available.contains(control) else { return nil }
-            return DisplayAnchor(displayID: id, control: control, available: available)
+            return DisplayAnchor(displayID: id, control: control, available: available, imageFrame: imageFrame)
         }
     }
 

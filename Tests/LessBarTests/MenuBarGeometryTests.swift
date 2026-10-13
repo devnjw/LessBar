@@ -3,6 +3,31 @@ import XCTest
 @testable import LessBar
 
 final class MenuBarGeometryTests: XCTestCase {
+    func testRecoveryPreservesNativeChevronCenterAndBaselineOnEachDisplay() throws {
+        let screens: [(UInt32, CGRect, CGRect?)] = [
+            (1, CGRect(x: 0, y: 0, width: 1728, height: 1117),
+                CGRect(x: 956, y: 1085, width: 772, height: 32)),
+            (2, CGRect(x: -1920, y: 0, width: 1920, height: 1080), nil)
+        ]
+        let items = [
+            StatusItemGeometry(windowFrame: CGRect(x: 1282, y: 1084, width: 40, height: 33),
+                imageFrame: CGRect(x: 1294, y: 1093.5, width: 16, height: 16)),
+            StatusItemGeometry(windowFrame: CGRect(x: -400, y: 1055, width: 40, height: 25),
+                imageFrame: CGRect(x: -388, y: 1060.5, width: 16, height: 16))
+        ]
+        let anchors = MenuBarGeometry.recoveryAnchors(items: items, screens: screens)
+        XCTAssertEqual(anchors.count, 2)
+        for (anchor, item) in zip(anchors, items) {
+            let nativeImage = try XCTUnwrap(item.imageFrame)
+            XCTAssertEqual(anchor.control.midX, nativeImage.midX)
+            XCTAssertEqual(anchor.imageFrame, nativeImage)
+            XCTAssertTrue(anchor.control.contains(nativeImage))
+            XCTAssertEqual(anchor.control.height, item.windowFrame.height)
+        }
+        // A 40pt native window has 8pt padding on each side of its 24pt button.
+        XCTAssertEqual(anchors.first?.control.minX, 1290)
+    }
+
     func testRecoveryAnchorsIncludeBothDisplaysForOversizedNativeItems() {
         let screens: [(UInt32, CGRect, CGRect?)] = [
             (1, CGRect(x: 0, y: 0, width: 1920, height: 1080), nil),
@@ -10,7 +35,7 @@ final class MenuBarGeometryTests: XCTestCase {
         ]
         let native = [CGRect(x: -2360, y: 1050, width: 3840, height: 30),
                       CGRect(x: -440, y: 1050, width: 3840, height: 30)]
-        let anchors = MenuBarGeometry.recoveryAnchors(windows: native, screens: screens)
+        let anchors = MenuBarGeometry.recoveryAnchors(items: native.map { StatusItemGeometry(windowFrame: $0) }, screens: screens)
         XCTAssertEqual(anchors.map(\.displayID), [1, 2])
         XCTAssertEqual(anchors.map { $0.control.maxX }, [1480, 3400])
     }
@@ -22,7 +47,7 @@ final class MenuBarGeometryTests: XCTestCase {
         let rightArea = CGRect(x: 956, y: 1085, width: 772, height: 32)
         let boundary = CGRect(x: 1301, y: 1084, width: 1, height: 33)
         let anchors = MenuBarGeometry.recoveryAnchors(
-            windows: [boundary], screens: [(1, screen, rightArea)])
+            items: [StatusItemGeometry(windowFrame: boundary)], screens: [(1, screen, rightArea)])
         XCTAssertEqual(anchors.map(\.displayID), [1])
         let anchor = anchors.first
         XCTAssertEqual(anchor?.control.height, 33)
@@ -37,7 +62,7 @@ final class MenuBarGeometryTests: XCTestCase {
         let screen = CGRect(x: 0, y: 0, width: 1728, height: 1117)
         let rightArea = CGRect(x: 956, y: 1085, width: 772, height: 32)
         let anchors = MenuBarGeometry.recoveryAnchors(
-            windows: [CGRect(x: 956, y: 1084, width: 1, height: 33)],
+            items: [StatusItemGeometry(windowFrame: CGRect(x: 956, y: 1084, width: 1, height: 33))],
             screens: [(1, screen, rightArea)])
         XCTAssertTrue(anchors.isEmpty)
     }
@@ -46,7 +71,7 @@ final class MenuBarGeometryTests: XCTestCase {
         let upper = CGRect(x: -1440, y: 1080, width: 1440, height: 900)
         let area = CGRect(x: -680, y: 1950, width: 680, height: 30)
         let anchors = MenuBarGeometry.recoveryAnchors(
-            windows: [CGRect(x: -480, y: 1950, width: 24, height: 30)],
+            items: [StatusItemGeometry(windowFrame: CGRect(x: -480, y: 1950, width: 24, height: 30))],
             screens: [(3, upper, area)])
         XCTAssertEqual(anchors.first?.displayID, 3)
         XCTAssertEqual(anchors.first?.control.maxY, 1980)
