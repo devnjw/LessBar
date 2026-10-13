@@ -5,6 +5,16 @@ import AppKit
 final class RecoveryButton: NSButton {
     var onReveal: (() -> Void)?
     var onContextMenu: (() -> Void)?
+    /// Native image bounds relative to the recovery panel's bottom-left corner.
+    var imageFrame: CGRect?
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let image else { return }
+        var rect = imageFrame ?? NSRect(x: bounds.midX - image.size.width / 2,
+            y: bounds.midY - image.size.height / 2, width: image.size.width, height: image.size.height)
+        if isFlipped { rect.origin.y = bounds.maxY - rect.maxY }
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var acceptsFirstResponder: Bool { false }

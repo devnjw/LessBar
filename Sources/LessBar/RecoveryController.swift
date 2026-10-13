@@ -34,14 +34,19 @@ final class RecoveryController: NSObject {
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
             panel.isOpaque = false
             panel.backgroundColor = .clear
+            // Explicitly accept clicks in the transparent padding as well as
+            // the chevron's painted pixels. The default uses pixel hit testing.
+            panel.ignoresMouseEvents = false
             panel.hasShadow = false
             panel.hidesOnDeactivate = false
             panel.becomesKeyOnlyIfNeeded = true
             let button = RecoveryButton(frame: NSRect(origin: .zero, size: anchor.control.size))
             button.isBordered = false
             button.title = ""
-            button.imagePosition = .imageOnly
-            button.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: L10n.showIcons)
+            ChevronAppearance.configure(button, collapsed: true)
+            button.imageFrame = anchor.imageFrame.map {
+                $0.offsetBy(dx: -anchor.control.minX, dy: -anchor.control.minY)
+            }
             button.setAccessibilityLabel(L10n.showIcons)
             button.toolTip = L10n.recoveryTooltip
             button.onReveal = { [weak self, weak panel] in

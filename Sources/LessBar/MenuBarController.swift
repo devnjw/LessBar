@@ -191,8 +191,9 @@ final class MenuBarController: NSObject {
         state.accessibilityGranted = AXIsProcessTrusted()
         for item in [toggle, engine.secondaryItem].compactMap({ $0 }) {
             item.button?.title = editing ? "│" : ""
-            item.button?.image = !editing && preferences.showSectionDividers && !engine.isCollapsed
-                ? NSImage(systemSymbolName: "chevron.right", accessibilityDescription: L10n.hideIcons) : nil
+            if let button = item.button, !editing && preferences.showSectionDividers && !engine.isCollapsed {
+                ChevronAppearance.configure(button, collapsed: false)
+            } else { item.button?.image = nil }
             item.button?.setAccessibilityLabel(engine.isCollapsed ? L10n.showIcons : L10n.hideIcons)
             item.button?.toolTip = L10n.toggleTooltip
         }

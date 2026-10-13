@@ -41,8 +41,9 @@ final class LengthMenuBarEngine {
     var secondaryItem: NSStatusItem? { alwaysHidden?.item }
 
     var anchors: [DisplayAnchor] {
-        guard let frames = MenuBarOccupancy.ownStatusItemFrames() else { return [] }
-        return MenuBarGeometry.recoveryAnchors(windows: frames, screens: NSScreen.screens.map {
+        let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
+        let items = NSApp.windows.filter { $0.level.rawValue == statusLevel }.map(StatusItemGeometry.capture)
+        return MenuBarGeometry.recoveryAnchors(items: items, screens: NSScreen.screens.map {
             (MenuBarGeometry.displayID($0), $0.frame, $0.auxiliaryTopRightArea)
         })
     }
