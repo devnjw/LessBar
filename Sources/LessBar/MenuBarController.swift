@@ -64,8 +64,13 @@ final class MenuBarController: NSObject {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             MainActor.assumeIsolated { self?.observe(event) }
         }
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask.union(.leftMouseDown)) { [weak self] event in
             MainActor.assumeIsolated { self?.observe(event) }
+            let consumed = MainActor.assumeIsolated {
+                guard let self else { return false }
+                return NativeChevronPress.consume(event) { self.toggleVisibility() }
+            }
+            if consumed { return nil }
             return event
         }
         interactionTimer = Timer(timeInterval: 0.05, target: self,
