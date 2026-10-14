@@ -12,6 +12,7 @@ final class RecoveryController: NSObject {
     private var retryTimer: Timer?
     private var validation: LayoutRecovery?
     private var visible = false
+    private let occupiedFrames: () -> [CGRect]?
     var displayIDs: [UInt32] { sessions.keys.sorted() }
     var visibleFrames: [CGRect] { sessions.values.filter { $0.panel.isVisible }.map { $0.panel.frame } }
 
@@ -19,6 +20,11 @@ final class RecoveryController: NSObject {
         let anchor: DisplayAnchor
         let panel: NSPanel
         let button: RecoveryButton
+    }
+
+    init(occupiedFrames: @escaping () -> [CGRect]? = { MenuBarOccupancy.statusItemFrames() }) {
+        self.occupiedFrames = occupiedFrames
+        super.init()
     }
 
     func prepare(anchors: [DisplayAnchor], showControls: Bool) -> Bool {
@@ -38,6 +44,7 @@ final class RecoveryController: NSObject {
             // the chevron's painted pixels. The default uses pixel hit testing.
             panel.ignoresMouseEvents = false
             panel.hasShadow = false
+            panel.animationBehavior = .none
             panel.hidesOnDeactivate = false
             panel.becomesKeyOnlyIfNeeded = true
             let button = RecoveryButton(frame: NSRect(origin: .zero, size: anchor.control.size))
@@ -65,6 +72,37 @@ final class RecoveryController: NSObject {
         return true
     }
 
+    /// Present the replacement before removing the native chevron. Keep its
+    /// old direction until collapse completes so opposite glyphs never overlap.
+    func handoffToCollapsed(_ collapse: () -> Bool) -> Bool {
+        guard !sessions.isEmpty,
+              Set(sessions.keys) == Set(NSScreen.screens.map(MenuBarGeometry.displayID)) else { return false }
+        if visible {
+            guard let occupied = occupiedFrames() else { return false }
+            var placements: [(Session, CGRect)] = []
+            for session in sessions.values {
+                guard let rect = LayoutSafety.recoveryFrame(anchor: session.anchor.control,
+                    available: session.anchor.available, occupied: occupied) else { return false }
+                placements.append((session, rect))
+            }
+            // Check every display before showing any panel or changing the
+            // native boundary. Unknown/unsafe geometry leaves it expanded.
+            for (session, rect) in placements {
+                ChevronAppearance.configure(session.button, collapsed: false)
+                session.panel.setFrame(rect, display: false)
+                session.panel.display()
+                session.panel.orderFrontRegardless()
+            }
+            guard sessions.values.allSatisfy({ $0.panel.isVisible }) else { stop(); return false }
+        }
+        guard collapse() else { stop(); return false }
+        for session in sessions.values {
+            ChevronAppearance.configure(session.button, collapsed: true)
+            if visible { session.panel.display() }
+        }
+        return true
+    }
+
     func startMonitoring() {
         guard !sessions.isEmpty else { return }
         validation = LayoutRecovery(now: ProcessInfo.processInfo.systemUptime)
@@ -89,12 +127,12 @@ final class RecoveryController: NSObject {
         let activeDisplays = Set(NSScreen.screens.map(MenuBarGeometry.displayID))
         var safe = sessions.keys.allSatisfy { activeDisplays.contains($0) }
         if visible {
-            guard let occupied = MenuBarOccupancy.statusItemFrames() else { onReveal(); return }
+            guard let occupied = occupiedFrames() else { onReveal(); return }
             for session in sessions.values {
                 if let rect = LayoutSafety.recoveryFrame(anchor: session.anchor.control,
                     available: session.anchor.available, occupied: occupied) {
-                    session.panel.setFrame(rect, display: true)
-                    session.panel.orderFrontRegardless()
+                    if session.panel.frame != rect { session.panel.setFrame(rect, display: true) }
+                    if !session.panel.isVisible { session.panel.orderFrontRegardless() }
                     safe = safe && session.panel.isVisible
                 } else {
                     session.panel.orderOut(nil)

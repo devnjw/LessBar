@@ -129,7 +129,7 @@ final class MenuBarController: NSObject {
         lastAnchors = anchors
         guard !anchors.isEmpty,
               recovery.prepare(anchors: anchors, showControls: preferences.showSectionDividers),
-              engine.setCollapsed(true) else {
+              recovery.handoffToCollapsed({ engine.setCollapsed(true) }) else {
             recovery.stop()
             if reportFailure { state.feedback = L10n.positionRecovery }
             policy.didReveal(now: now)

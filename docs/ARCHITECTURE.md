@@ -16,7 +16,7 @@ LessBar uses Swift, AppKit and SwiftUI with no third-party dependencies.
 
 ## Collapse lifecycle
 
-Capture the user's boundary before changing the native status-item width. Prepare an independent nonactivating panel, collapse the native item, then validate placement before showing the reveal button. Never show the panel over an occupied system item.
+Capture the user's boundary before changing the native status-item width. Prepare independent nonactivating panels and validate placement on every display before collapsing. Show the panels without animation in the native chevron's current direction, collapse the native item, then flip the replacement chevrons immediately. This keeps a control visible across the transition without waiting for the first retry timer. Unknown or unsafe placement leaves the native item expanded. Never show a panel over an occupied system item.
 
 During initial settling or an unsafe snapshot, check every 75 ms. A continuous unsafe interval of 750 ms triggers expansion. Once settled, check every 500 ms. A fresh safe sample clears the failure deadline. A display change reveals immediately.
 
