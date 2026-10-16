@@ -221,6 +221,12 @@ final class MenuBarController: NSObject {
         state.accessibilityGranted = AXIsProcessTrusted()
         for item in [toggle, engine.secondaryItem].compactMap({ $0 }) {
             item.button?.title = editing ? "│" : ""
+            if editing, let button = item.button {
+                let title = NSMutableAttributedString(attributedString: button.attributedTitle)
+                title.addAttribute(.foregroundColor, value: NSColor.white,
+                    range: NSRange(location: 0, length: title.length))
+                button.attributedTitle = title
+            }
             if let button = item.button, !editing && preferences.showSectionDividers && !engine.isCollapsed {
                 ChevronAppearance.configure(button, collapsed: false)
             } else { item.button?.image = nil }
