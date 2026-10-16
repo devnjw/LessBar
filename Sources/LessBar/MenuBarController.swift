@@ -327,7 +327,10 @@ final class MenuBarController: NSObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
     }
-    @objc private func spaceChanged() { geometryAt = 0 }
+    @objc private func spaceChanged() {
+        geometryAt = 0
+        recovery.refreshVisibility()
+    }
     @objc private func showSettings() { onSettings() }
     @objc private func showAll() { temporarilyShowAll() }
     @objc private func quitApp() { NSApp.terminate(nil) }

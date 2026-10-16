@@ -9,10 +9,13 @@ final class RecoveryController: NSObject {
     private(set) var recoveryButton: NSButton?
     private var sessions: [CGDirectDisplayID: Session] = [:]
     private var safetyTimer: Timer?
+    private var visibilityTimer: Timer?
     private var retryTimer: Timer?
     private var validation: LayoutRecovery?
     private var visible = false
     private let occupiedFrames: () -> [CGRect]?
+    private let visibleMenuBarDisplays: () -> Set<CGDirectDisplayID>
+    private var menuBarDisplays: Set<CGDirectDisplayID> = []
     var displayIDs: [UInt32] { sessions.keys.sorted() }
     var visibleFrames: [CGRect] { sessions.values.filter { $0.panel.isVisible }.map { $0.panel.frame } }
 
@@ -22,8 +25,10 @@ final class RecoveryController: NSObject {
         let button: RecoveryButton
     }
 
-    init(occupiedFrames: @escaping () -> [CGRect]? = { MenuBarOccupancy.statusItemFrames() }) {
+    init(occupiedFrames: @escaping () -> [CGRect]? = { MenuBarOccupancy.statusItemFrames() },
+         visibleMenuBarDisplays: @escaping () -> Set<CGDirectDisplayID> = { MenuBarVisibility.visibleDisplayIDs() }) {
         self.occupiedFrames = occupiedFrames
+        self.visibleMenuBarDisplays = visibleMenuBarDisplays
         super.init()
     }
 
@@ -78,9 +83,11 @@ final class RecoveryController: NSObject {
         guard !sessions.isEmpty,
               Set(sessions.keys) == Set(NSScreen.screens.map(MenuBarGeometry.displayID)) else { return false }
         if visible {
-            guard let occupied = occupiedFrames() else { return false }
+            menuBarDisplays = visibleMenuBarDisplays()
+            let shown = sessions.values.filter { menuBarDisplays.contains($0.anchor.displayID) }
+            guard let occupied = shown.isEmpty ? [] : occupiedFrames() else { return false }
             var placements: [(Session, CGRect)] = []
-            for session in sessions.values {
+            for session in shown {
                 guard let rect = LayoutSafety.recoveryFrame(anchor: session.anchor.control,
                     available: session.anchor.available, occupied: occupied) else { return false }
                 placements.append((session, rect))
@@ -93,12 +100,12 @@ final class RecoveryController: NSObject {
                 session.panel.display()
                 session.panel.orderFrontRegardless()
             }
-            guard sessions.values.allSatisfy({ $0.panel.isVisible }) else { stop(); return false }
+            guard shown.allSatisfy({ $0.panel.isVisible }) else { stop(); return false }
         }
         guard collapse() else { stop(); return false }
         for session in sessions.values {
             ChevronAppearance.configure(session.button, collapsed: true)
-            if visible { session.panel.display() }
+            if session.panel.isVisible { session.panel.display() }
         }
         return true
     }
@@ -109,16 +116,27 @@ final class RecoveryController: NSObject {
         safetyTimer = Timer(timeInterval: 0.5, target: self,
             selector: #selector(checkLayoutSafety), userInfo: nil, repeats: true)
         RunLoop.main.add(safetyTimer!, forMode: .common)
+        visibilityTimer = Timer(timeInterval: 0.1, target: self,
+            selector: #selector(refreshVisibility), userInfo: nil, repeats: true)
+        RunLoop.main.add(visibilityTimer!, forMode: .common)
+        refreshVisibility()
         scheduleRetry()
     }
 
     func stop() {
         safetyTimer?.invalidate(); safetyTimer = nil
+        visibilityTimer?.invalidate(); visibilityTimer = nil
         retryTimer?.invalidate(); retryTimer = nil
         validation = nil
         sessions.values.forEach { $0.panel.orderOut(nil) }
         sessions.removeAll()
         recoveryButton = nil
+        menuBarDisplays = []
+    }
+
+    @objc func refreshVisibility() {
+        guard visible, !sessions.isEmpty, visibleMenuBarDisplays() != menuBarDisplays else { return }
+        checkLayoutSafety()
     }
 
     @objc private func checkLayoutSafety() {
@@ -127,8 +145,15 @@ final class RecoveryController: NSObject {
         let activeDisplays = Set(NSScreen.screens.map(MenuBarGeometry.displayID))
         var safe = sessions.keys.allSatisfy { activeDisplays.contains($0) }
         if visible {
-            guard let occupied = occupiedFrames() else { onReveal(); return }
-            for session in sessions.values {
+            menuBarDisplays = visibleMenuBarDisplays()
+            // Hidden menu bars are intentional, not failed recovery controls.
+            // Keep the collapse state and validate only displays with a menu bar.
+            let shown = sessions.values.filter { menuBarDisplays.contains($0.anchor.displayID) }
+            for session in sessions.values where !menuBarDisplays.contains(session.anchor.displayID) {
+                session.panel.orderOut(nil)
+            }
+            guard let occupied = shown.isEmpty ? [] : occupiedFrames() else { onReveal(); return }
+            for session in shown {
                 if let rect = LayoutSafety.recoveryFrame(anchor: session.anchor.control,
                     available: session.anchor.available, occupied: occupied) {
                     if session.panel.frame != rect { session.panel.setFrame(rect, display: true) }

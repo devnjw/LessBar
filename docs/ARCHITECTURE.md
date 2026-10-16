@@ -11,6 +11,7 @@ LessBar uses Swift, AppKit and SwiftUI with no third-party dependencies.
 | `LayoutRecovery` | Testable bounded retry policy for asynchronous menu layout |
 | `LayoutSafety` | Pure geometry: coordinate conversion and collision-free positioning |
 | `MenuBarOccupancy` | Public Window Server geometry query; no titles or screenshots |
+| `MenuBarVisibility` | Per-display system menu bar visibility from public Window Server geometry |
 | `Preferences` | ServiceManagement login registration and narrow preference migration |
 | `SettingsView` / `L10n` | Minimal settings UI and English/Korean resources |
 
@@ -20,7 +21,9 @@ Capture the user's boundary before changing the native status-item width. Prepar
 
 During initial settling or an unsafe snapshot, check every 75 ms. A continuous unsafe interval of 750 ms triggers expansion. Once settled, check every 500 ms. A fresh safe sample clears the failure deadline. A display change reveals immediately.
 
-The recovery controller owns both timers. Revealing invalidates them, clears the session and removes the panel. Delayed clicks are checked against panel identity; cancelled retry callbacks are checked against timer identity. Recovery always reveals rather than toggles, preventing stale callbacks from collapsing a new session.
+Recovery panels follow each display's actual system menu bar. A 100 ms visibility poll and Space-change refresh hide panels when the full-width system menu bar is absent, transparent or sliding offscreen, including full-screen video and desktop auto-hide. Hidden menu bars keep the shared collapsed state without triggering recovery failure. When a menu bar returns, collision checks run before restoring its panel; other displays remain independent. Unknown visibility hides panels until a known visible menu bar returns. Queries inspect only window layers, bounds and alpha, requiring neither screen capture nor window titles.
+
+The recovery controller owns its safety, retry and visibility timers. Revealing invalidates them, clears the session and removes the panel. Delayed clicks are checked against panel identity; cancelled retry callbacks are checked against timer identity. Recovery always reveals rather than toggles, preventing stale callbacks from collapsing a new session.
 
 The engine is the source of truth for the published state. Both native and settings controls use the same transition path. The recovery timers only run while collapsed. The input coordinator samples pointer/modifier state every 50 ms and refreshes geometry every 200 ms; it never observes typed key content.
 
