@@ -12,10 +12,31 @@ enum ChevronAppearance {
     }
 
     static func configure(_ button: NSButton, collapsed: Bool) {
+        configure(button, image: image(collapsed: collapsed))
+    }
+
+    static func configureDivider(_ button: NSButton) {
+        let font = button.font ?? NSFont.menuBarFont(ofSize: 0)
+        let glyph = NSAttributedString(string: "│", attributes: [.font: font, .foregroundColor: NSColor.white])
+        let size = glyph.size()
+        let image = NSImage(size: canvasSize, flipped: false) { _ in
+            glyph.draw(at: NSPoint(x: (canvasSize.width - size.width) / 2,
+                y: (canvasSize.height - size.height) / 2))
+            return true
+        }
+        // Status bar text can be recolored by AppKit, including native mirrors.
+        // Bake the existing glyph into the same non-template artwork as the chevrons.
+        image.isTemplate = false
+        image.alignmentRect = NSRect(origin: .zero, size: canvasSize)
+        configure(button, image: image)
+    }
+
+    private static func configure(_ button: NSButton, image: NSImage?) {
+        button.title = ""
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleNone
         button.contentTintColor = .white
-        button.image = image(collapsed: collapsed)
+        button.image = image
     }
 
     private static func makeImage(mirrored: Bool) -> NSImage? {

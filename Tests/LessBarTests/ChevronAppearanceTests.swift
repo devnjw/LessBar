@@ -3,6 +3,45 @@ import XCTest
 @testable import LessBar
 
 final class ChevronAppearanceTests: XCTestCase {
+    @MainActor func testEditingDividerKeepsWhitePixelsAcrossAppearancesAndDisplayScales() throws {
+        let button = NSButton()
+        button.font = NSFont.menuBarFont(ofSize: 0)
+        button.title = "│"
+        ChevronAppearance.configureDivider(button)
+        XCTAssertEqual(button.title, "", "No native text should remain for AppKit to recolor")
+        let image = try XCTUnwrap(button.image)
+        XCTAssertFalse(image.isTemplate)
+        for name in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearance = try XCTUnwrap(NSAppearance(named: name))
+            for scale in [1, 2] {
+                var bitmap: NSBitmapImageRep?
+                var error: Error?
+                appearance.performAsCurrentDrawingAppearance {
+                    do { bitmap = try render(image, scale: scale) }
+                    catch let caught { error = caught }
+                }
+                if let error { throw error }
+                let rendered = try XCTUnwrap(bitmap)
+                var paintedPixels = 0
+                for y in 0..<rendered.pixelsHigh {
+                    for x in 0..<rendered.pixelsWide {
+                        let color = try XCTUnwrap(rendered.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                        if color.alphaComponent > 0.1 {
+                            paintedPixels += 1
+                            XCTAssertGreaterThanOrEqual(color.redComponent, 0.99)
+                            XCTAssertGreaterThanOrEqual(color.greenComponent, 0.99)
+                            XCTAssertGreaterThanOrEqual(color.blueComponent, 0.99)
+                        }
+                    }
+                }
+                XCTAssertGreaterThan(paintedPixels, 0)
+            }
+        }
+        ChevronAppearance.configure(button, collapsed: false)
+        XCTAssertTrue(button.image === ChevronAppearance.image(collapsed: false))
+        XCTAssertEqual(button.title, "")
+    }
+
     @MainActor func testDirectionsHaveIdenticalMirroredPixelsAtBothDisplayScales() throws {
         let right = try XCTUnwrap(ChevronAppearance.image(collapsed: false))
         let left = try XCTUnwrap(ChevronAppearance.image(collapsed: true))

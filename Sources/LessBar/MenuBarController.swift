@@ -220,18 +220,15 @@ final class MenuBarController: NSObject {
         state.isCollapsed = engine.isCollapsed
         state.accessibilityGranted = AXIsProcessTrusted()
         for item in [toggle, engine.secondaryItem].compactMap({ $0 }) {
-            item.button?.title = editing ? "│" : ""
-            if editing, let button = item.button {
-                let title = NSMutableAttributedString(attributedString: button.attributedTitle)
-                title.addAttribute(.foregroundColor, value: NSColor.white,
-                    range: NSRange(location: 0, length: title.length))
-                button.attributedTitle = title
-            }
-            if let button = item.button, !editing && preferences.showSectionDividers && !engine.isCollapsed {
+            guard let button = item.button else { continue }
+            button.title = ""
+            if editing {
+                ChevronAppearance.configureDivider(button)
+            } else if preferences.showSectionDividers && !engine.isCollapsed {
                 ChevronAppearance.configure(button, collapsed: false)
-            } else { item.button?.image = nil }
-            item.button?.setAccessibilityLabel(engine.isCollapsed ? L10n.showIcons : L10n.hideIcons)
-            item.button?.toolTip = L10n.toggleTooltip
+            } else { button.image = nil }
+            button.setAccessibilityLabel(engine.isCollapsed ? L10n.showIcons : L10n.hideIcons)
+            button.toolTip = L10n.toggleTooltip
         }
     }
 
