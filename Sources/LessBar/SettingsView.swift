@@ -56,6 +56,10 @@ struct SettingsView: View {
                 Text(state.feedback).font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
             }
+            if !state.sharingFeedback.isEmpty {
+                Text(state.sharingFeedback).font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+            }
         }
         .padding(20)
         .frame(width: 440)
@@ -73,7 +77,7 @@ struct SettingsView: View {
                 sliderRow(L10n.hoverDelay, value: $preferences.hoverDelay,
                           range: 0...2, step: 0.1, format: L10n.secondsFormat)
             }
-            if (preferences.showOnClick || preferences.showOnHover) && !state.accessibilityGranted {
+            if !state.accessibilityGranted {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(L10n.accessibilityNeeded).font(.system(size: 11)).foregroundStyle(.secondary)
                     Button(action: requestAccessibility) {

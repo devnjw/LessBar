@@ -11,6 +11,7 @@ LessBar uses Swift, AppKit and SwiftUI with no third-party dependencies.
 | `LayoutRecovery` | Testable bounded retry policy for asynchronous menu layout |
 | `LayoutSafety` | Pure geometry: coordinate conversion and collision-free positioning |
 | `MenuBarOccupancy` | Public Window Server geometry query; no titles or screenshots |
+| `SharingIndicator` | Exact system-control identification, safe placement and bounded automatic reordering |
 | `MenuBarVisibility` | Per-display system menu bar visibility from public Window Server geometry |
 | `Preferences` | ServiceManagement login registration and narrow preference migration |
 | `SettingsView` / `L10n` | Minimal settings UI and English/Korean resources |
@@ -39,7 +40,11 @@ Application-menu hiding temporarily activates a minimal application menu only wh
 
 ## System constraints
 
-The width strategy is enabled on macOS 13–26, with macOS 27+ explicitly disabled pending a verified implementation. The separate reveal window is needed when macOS removes an oversized native item. Public status-item APIs do not provide a verified way to enforce sharing-indicator order in expanded mode.
+The width strategy is enabled on macOS 13–26, with macOS 27+ explicitly disabled pending a verified implementation. The separate reveal window is needed when macOS removes an oversized native item.
+
+With Accessibility permission, sharing-control placement reads only Control Center's extras menu bar and the exact `com.apple.menuextra.audiovideo` identifier. Its inset AX bounds must match exactly one on-screen status window owned by Control Center. Ambiguous geometry, unavailable permission and unknown identifiers never produce a drag. The native boundary is not moved to another group.
+
+Reordering runs only while expanded and with no mouse button, modifier or menu held. A pending close waits for this bounded handoff; the normal interaction policy is suspended during generated Command-drag events. User input interrupts the operation and allows a later retry after a short delay. The result is checked against fresh indicator/boundary geometry, not inferred from event delivery. Failure is reported in settings and is not retried continuously. Reopening settings permits another attempt. Display/Space changes and shutdown cancel the operation and release the generated drag.
 
 The public bundle ID is `io.github.devnjw.LessBar`. The existing `TidyBar.Toggle` autosave key is retained to preserve placement. Only known setup/placement keys migrate from `local.tidybar.app`, once, without overwriting new choices. Login registration is not migrated between bundle identities.
 
