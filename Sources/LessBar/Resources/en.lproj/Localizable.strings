@@ -45,7 +45,8 @@
 "hideApplicationMenus" = "Hide app menus when showing items";
 "hideApplicationMenusDetail" = "Make room by hiding the menus on the left while items are shown.";
 "allowAccessibility" = "Allow Accessibility access";
-"accessibilityNeeded" = "Click and hover need Accessibility access to identify empty menu bar space.";
+"accessibilityNeeded" = "Accessibility access lets LessBar keep the screen-sharing control to the right and identify empty menu bar space.";
+"sharingPlacementFailed" = "macOS did not allow the screen-sharing control to move. It remains visible; reopen LessBar to try again.";
 "secondsFormat" = "%g seconds";
 
 "boundaryOrder" = "Hold Command and place the always-hidden divider to the left of the normal divider.";

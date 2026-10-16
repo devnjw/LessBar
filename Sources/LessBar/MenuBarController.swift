@@ -1,12 +1,14 @@
 import AppKit
 @preconcurrency import ApplicationServices
 import Combine
+import OSLog
 
 @MainActor
 final class MenuBarState: ObservableObject {
     @Published var isCollapsed = false
     @Published var accessibilityGranted = false
     @Published var feedback = ""
+    @Published var sharingFeedback = ""
 }
 
 /// One shared visibility state for every native mirrored menu bar. Geometry and
@@ -39,6 +41,13 @@ final class MenuBarController: NSObject {
     private var nativeMenuOpen = false
     private var lastAnchors: [DisplayAnchor] = []
     private var pendingLayoutCollapse: DispatchWorkItem?
+    private let sharingMover = SharingIndicatorMover()
+    private var sharingTask: Task<Void, Never>?
+    private var sharingCheckedAt: TimeInterval = 0
+    private var sharingRetryAfter: TimeInterval = 0
+    private var failedSharingWindow: CGWindowID?
+    private var collapseAfterSharing = false
+    private let sharingLog = Logger(subsystem: "io.github.devnjw.LessBar", category: "sharing")
 
     init(preferences: Preferences, onSettings: @escaping () -> Void) {
         self.preferences = preferences
@@ -112,12 +121,18 @@ final class MenuBarController: NSObject {
     }
 
     func toggleVisibility() {
+        if sharingTask != nil {
+            collapseAfterSharing.toggle()
+            return
+        }
         if engine.isCollapsed { reveal() }
         else { collapse(reportFailure: true) }
     }
 
     private func collapse(reportFailure: Bool = false) {
         guard isSupported else { return }
+        if sharingTask != nil { collapseAfterSharing = true; return }
+        if alignSharingIndicator(thenCollapse: true) { return }
         if !engine.validateBoundaryOrder() {
             engine.reveal(all: true)
             state.feedback = L10n.boundaryOrder
@@ -151,6 +166,7 @@ final class MenuBarController: NSObject {
     }
 
     func reveal(all: Bool = false, temporary: Bool = false) {
+        collapseAfterSharing = false
         pendingLayoutCollapse?.cancel(); pendingLayoutCollapse = nil
         editingEndAt = nil
         if !all { temporaryRestoreCollapsed = nil }
@@ -176,7 +192,16 @@ final class MenuBarController: NSObject {
         state.accessibilityGranted = AXIsProcessTrusted()
     }
 
+    func retrySharingPlacement() {
+        failedSharingWindow = nil
+        sharingCheckedAt = 0
+        sharingRetryAfter = 0
+        state.sharingFeedback = ""
+    }
+
     func stop() {
+        sharingMover.cancel()
+        sharingTask?.cancel(); sharingTask = nil
         pendingLayoutCollapse?.cancel(); pendingLayoutCollapse = nil
         interactionTimer?.invalidate(); interactionTimer = nil
         if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
@@ -205,6 +230,7 @@ final class MenuBarController: NSObject {
     }
 
     private func observe(_ event: NSEvent) {
+        if sharingTask != nil || event.cgEvent?.getIntegerValueField(.eventSourceUserData) == SharingIndicatorMover.eventTag { return }
         if event.window?.level.rawValue == Int(CGWindowLevelForKey(.statusWindow)) ||
            event.window?.title == L10n.recoveryTitle { return }
         let point = NSEvent.mouseLocation
@@ -244,12 +270,24 @@ final class MenuBarController: NSObject {
     }
 
     @objc private func checkInteraction() {
+        if sharingTask != nil { return }
         if now - geometryAt > 0.2 { refreshGeometry() }
         let point = NSEvent.mouseLocation
         let screen = MenuBarGeometry.screen(at: point)
         let display = screen.map(MenuBarGeometry.displayID)
         let command = NSEvent.modifierFlags.contains(.command)
         let mouseDown = NSEvent.pressedMouseButtons & 1 != 0
+        if !editing && !nativeMenuOpen && !mouseDown && !command {
+            if collapseAfterSharing {
+                collapseAfterSharing = false
+                collapse(reportFailure: true)
+                return
+            }
+            if now - sharingCheckedAt >= 0.5 {
+                sharingCheckedAt = now
+                if alignSharingIndicator(thenCollapse: false) { return }
+            }
+        }
         if mouseDown && command && screen != nil {
             if let origin = dragOrigin {
                 if hypot(point.x - origin.x, point.y - origin.y) >= 6 { dragPending = true }
@@ -312,11 +350,85 @@ final class MenuBarController: NSObject {
         menu.popUp(positioning: nil, at: point, in: nil)
     }
 
+    private func sharingBoundary(for indicator: SharingIndicator) -> (CGRect, CGRect)? {
+        guard let primary = NSScreen.screens.first else { return nil }
+        for anchor in engine.anchors {
+            let control = LayoutSafety.appKitFrame(fromWindowServer: anchor.control,
+                primaryScreenMaxY: primary.frame.maxY)
+            let available = LayoutSafety.appKitFrame(fromWindowServer: anchor.available,
+                primaryScreenMaxY: primary.frame.maxY)
+            if available.contains(indicator.frame) { return (control, available) }
+        }
+        return nil
+    }
+
+    /// Correct the system item's order while the original native boundary is
+    /// present. Its saved placement then survives ordinary hide/show cycles.
+    private func alignSharingIndicator(thenCollapse: Bool) -> Bool {
+        guard isSupported, !engine.isCollapsed, !editing, sharingTask == nil,
+              AXIsProcessTrusted() else { return false }
+        if now < sharingRetryAfter {
+            collapseAfterSharing = collapseAfterSharing || thenCollapse
+            return thenCollapse
+        }
+        guard let indicator = SharingIndicatorLocator.current() else {
+            state.sharingFeedback = ""
+            return false
+        }
+        guard let (boundary, available) = sharingBoundary(for: indicator) else { return false }
+        if SharingIndicatorPlacement.isToRight(indicator: indicator.frame, boundary: boundary) {
+            failedSharingWindow = nil
+            state.sharingFeedback = ""
+            return false
+        }
+        guard failedSharingWindow != indicator.windowID,
+              let destination = SharingIndicatorPlacement.destination(indicator: indicator.frame,
+                boundary: boundary, available: available) else { return false }
+        collapseAfterSharing = collapseAfterSharing || thenCollapse
+        guard NSEvent.pressedMouseButtons == 0,
+              NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock).isEmpty,
+              !nativeMenuOpen else { return thenCollapse }
+        sharingLog.info("Reordering sharing indicator before native boundary: \(indicator.frame.minX) -> \(destination.x)")
+        sharingTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await sharingMover.move(indicator, to: destination)
+            guard !Task.isCancelled else { return }
+            let current = SharingIndicatorLocator.current()
+            let placed = current.flatMap { item in
+                sharingBoundary(for: item).map {
+                    SharingIndicatorPlacement.isToRight(indicator: item.frame, boundary: $0.0)
+                }
+            } ?? false
+            sharingLog.info("Sharing reorder result=\(String(describing: result)), verified=\(placed)")
+            if placed {
+                failedSharingWindow = nil
+                state.sharingFeedback = ""
+            } else if result == .deferred {
+                sharingRetryAfter = now + 1.5
+            } else {
+                failedSharingWindow = indicator.windowID
+                state.sharingFeedback = L10n.sharingPlacementFailed
+            }
+            sharingTask = nil
+            geometryAt = 0
+            lastAnchors = engine.anchors
+            if collapseAfterSharing && (placed || result != .deferred) {
+                collapseAfterSharing = false
+                collapse(reportFailure: true)
+            }
+        }
+        return true
+    }
+
     @objc private func clicked() {
         if NSApp.currentEvent?.type == .rightMouseUp { showContextMenu(at: NSEvent.mouseLocation) }
         else { toggleVisibility() }
     }
     @objc private func screenChanged() {
+        sharingMover.cancel()
+        sharingTask?.cancel(); sharingTask = nil
+        failedSharingWindow = nil
+        sharingRetryAfter = 0
         let collapsed = engine.isCollapsed
         reveal()
         geometryAt = 0
@@ -328,6 +440,9 @@ final class MenuBarController: NSObject {
         }
     }
     @objc private func spaceChanged() {
+        sharingMover.cancel()
+        sharingTask?.cancel(); sharingTask = nil
+        collapseAfterSharing = false
         geometryAt = 0
         recovery.refreshVisibility()
     }

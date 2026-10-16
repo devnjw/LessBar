@@ -28,13 +28,15 @@ English and Korean follow your macOS language preference. Closing the settings w
 
 Reopen LessBar from Applications to show all icons and open settings. Quitting restores hidden icons. Display changes briefly expand the icons while layout settles, then restore the previous shared visibility state.
 
-LessBar checks for menu bar overlap and moves its reveal button away from other items, including active screen-sharing indicators. It briefly retries during system layout changes and expands if a safe position cannot be found. Expanded-state ordering of system indicators is controlled by macOS.
+With Accessibility access, LessBar automatically moves the active screen-sharing control into the always-visible section to the right of its chevron. It leaves controls that are already on the right in place. If macOS rejects the move, settings show a message and the control stays visible; reopening LessBar retries it.
+
+LessBar also checks for menu bar overlap and moves its reveal button away from other items. It briefly retries during system layout changes and expands if a safe position cannot be found.
 
 This is an early release using a status item's width to hide neighbors. Notched displays can still run out of space; LessBar does not copy icons into a second bar. Visibility is synchronized across native menu bars; full-screen Spaces, notched or differently arranged displays, Intel hardware and older systems still need further interactive testing. It cannot restore icons disabled in another app's preferences.
 
 ## Privacy
 
-No analytics, network requests, account or Screen Recording access. Empty-area click and hover use Accessibility access to read application-menu positions and sizes. The app reads menu bar window geometry without capturing images or titles. Launch at Login is opt-in and managed by macOS.
+No analytics, network requests, account or Screen Recording access. Accessibility access identifies the system screen-sharing control and reorders it using Command-drag events. Empty-area click and hover use the same permission to read application-menu positions and sizes. The app reads menu bar identifiers and geometry without capturing images or titles. Launch at Login is opt-in and managed by macOS.
 
 ## Build from source
 

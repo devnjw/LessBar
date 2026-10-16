@@ -9,6 +9,7 @@ enum L10n {
         return .module
     }()
     static var boundaryOrder: String { text("boundaryOrder") }
+    static var sharingPlacementFailed: String { text("sharingPlacementFailed") }
     static var settings: String { text("settings") }
     static var settingsTitle: String { text("settingsTitle") }
     static var quit: String { text("quit") }

@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettings() {
         guard let menuBar else { return }
+        menuBar.retrySharingPlacement()
         menuBar.reveal()
         preferences.refreshLoginStatus()
         if settingsWindow == nil {

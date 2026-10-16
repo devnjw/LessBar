@@ -45,7 +45,8 @@
 "hideApplicationMenus" = "항목 표시 중 앱 메뉴 숨기기";
 "hideApplicationMenusDetail" = "항목을 펼칠 공간이 부족하면 왼쪽 앱 메뉴를 숨겨 공간을 만들어요.";
 "allowAccessibility" = "손쉬운 사용 권한 허용";
-"accessibilityNeeded" = "빈 메뉴 막대 공간을 구분하려면 손쉬운 사용 권한이 필요해요.";
+"accessibilityNeeded" = "화면공유 표시를 꺾쇠 오른쪽에 유지하고 빈 메뉴 막대 공간을 구분하려면 손쉬운 사용 권한이 필요해요.";
 "secondsFormat" = "%g초";
 
 "boundaryOrder" = "⌘를 누른 상태에서 상시 숨김 구분선을 일반 숨김 구분선 왼쪽으로 옮겨 주세요.";
+"sharingPlacementFailed" = "macOS가 화면공유 표시의 이동을 허용하지 않았어요. 표시는 계속 보이며, LessBar를 다시 열면 재시도합니다.";
