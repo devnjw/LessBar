@@ -38,7 +38,7 @@ final class SettingsWindowTests: XCTestCase {
         }
     }
 
-    @MainActor func testRealSettingsHeightFollowsHoverExplanationAndRestores() async throws {
+    @MainActor func testHidingArrowOpensAdvancedAndItsHeightStaysStableWhenHoverLocksAutomaticHiding() async throws {
         _ = NSApplication.shared
         let suite = "LessBarTests.settingsWindow.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -53,17 +53,64 @@ final class SettingsWindowTests: XCTestCase {
         window.orderFrontRegardless()
         try await Task.sleep(nanoseconds: 350_000_000)
         let top = window.frame.maxY
+        let foldedHeight = try XCTUnwrap(window.contentView).bounds.height
+        preferences.showChevron = false
+        try await Task.sleep(nanoseconds: 350_000_000)
         let initialHeight = try XCTUnwrap(window.contentView).bounds.height
+        XCTAssertGreaterThan(initialHeight, foldedHeight + 140,
+            "Hiding the arrow must expose the reveal controls and timing sliders")
+        XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
+        preferences.showChevron = true
+        try await Task.sleep(nanoseconds: 350_000_000)
+        XCTAssertEqual(try XCTUnwrap(window.contentView).bounds.height, initialHeight, accuracy: 0.5,
+            "Showing the arrow must not unexpectedly close Advanced")
         preferences.showOnHover = true
         try await Task.sleep(nanoseconds: 350_000_000)
         let content = try XCTUnwrap(window.contentView)
-        XCTAssertGreaterThan(content.bounds.height, initialHeight)
+        XCTAssertEqual(content.bounds.height, initialHeight, accuracy: 0.5)
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(content.subviews.first).frame.height, content.bounds.height)
         XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
         preferences.showOnHover = false
         try await Task.sleep(nanoseconds: 350_000_000)
         XCTAssertEqual(content.bounds.height, initialHeight, accuracy: 0.5)
         XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
+    }
+
+    @MainActor func testHelpRequestWorksBeforeFirstWindowAndAfterCollapseAndClose() async throws {
+        _ = NSApplication.shared
+        let suite = "LessBarTests.helpMenu.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        let state = MenuBarState()
+        state.accessibilityGranted = true
+        let presentation = SettingsPresentation()
+        presentation.showHowToUse()
+        let controller = SettingsWindowController(rootView: SettingsView(
+            preferences: preferences, state: state, presentation: presentation, supported: true))
+        let window = try XCTUnwrap(controller.window)
+        defer { window.orderOut(nil) }
+        controller.showWindow(nil)
+        try await Task.sleep(nanoseconds: 350_000_000)
+        let expandedHeight = try XCTUnwrap(window.contentView).bounds.height
+        let top = window.frame.maxY
+        // Same binding as manually folding the disclosure.
+        presentation.helpExpanded = false
+        try await Task.sleep(nanoseconds: 350_000_000)
+        let foldedHeight = try XCTUnwrap(window.contentView).bounds.height
+        XCTAssertGreaterThan(expandedHeight, foldedHeight + 140)
+        for closeFirst in [false, true] {
+            if closeFirst { window.close() }
+            presentation.showHowToUse()
+            controller.showWindow(nil)
+            try await Task.sleep(nanoseconds: 350_000_000)
+            XCTAssertEqual(try XCTUnwrap(window.contentView).bounds.height, expandedHeight, accuracy: 0.5)
+            XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
+            XCTAssertTrue(window.isVisible)
+            presentation.helpExpanded = false
+            try await Task.sleep(nanoseconds: 350_000_000)
+            XCTAssertEqual(try XCTUnwrap(window.contentView).bounds.height, foldedHeight, accuracy: 0.5)
+        }
     }
 
     @MainActor func testHeightAnimationKeepsTopFixedAndContentTopAligned() async throws {

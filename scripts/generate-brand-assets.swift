@@ -60,16 +60,16 @@ func label(_ text: String, x: CGFloat, y: CGFloat, size: CGFloat,
 let shapes = "<rect x=\"20\" y=\"40\" width=\"144\" height=\"48\" rx=\"24\"/><circle cx=\"212\" cy=\"64\" r=\"24\"/>"
 for (filename, color) in [("lessbar-mark.svg", "#171a1f"), ("lessbar-mark-white.svg", "#ffffff")] {
     let svg = """
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 128" role="img" aria-label="LessBar">
-      <title>LessBar — LESS mark</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 128" role="img" aria-label="Less Bar">
+      <title>Less Bar — LESS mark</title>
       <g fill="\(color)">\(shapes)</g>
     </svg>
     """
     try svg.write(to: brand.appendingPathComponent(filename), atomically: true, encoding: .utf8)
 }
 let iconSVG = """
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="LessBar app icon">
-  <title>LessBar app icon</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Less Bar app icon">
+  <title>Less Bar app icon</title>
   <rect x="48" y="48" width="928" height="928" rx="210" fill="#171a1f"/>
   <g transform="translate(112 312) scale(3.125)" fill="#fff">\(shapes)</g>
 </svg>
@@ -106,7 +106,7 @@ guard task.terminationStatus == 0 else { fatalError("iconutil failed") }
 try png(width: 1440, height: 920, to: preview.appendingPathComponent("lessbar-brand-preview.png")) {
     NSColor(srgbRed: 0.975, green: 0.975, blue: 0.965, alpha: 1).setFill()
     NSRect(x: 0, y: 0, width: 1440, height: 920).fill()
-    label("LessBar", x: 80, y: 785, size: 66, weight: .bold)
+    label("Less Bar", x: 80, y: 785, size: 66, weight: .bold)
     label("A little less. A lot clearer.", x: 82, y: 748, size: 24, color: muted)
     mark(NSRect(x: 72, y: 400, width: 580, height: 290), color: ink)
     label("LESS / Primary mark", x: 82, y: 390, size: 20, weight: .medium)
@@ -117,13 +117,13 @@ try png(width: 1440, height: 920, to: preview.appendingPathComponent("lessbar-br
     ink.setFill()
     NSBezierPath(roundedRect: NSRect(x: 715, y: 120, width: 645, height: 215), xRadius: 24, yRadius: 24).fill()
     mark(NSRect(x: 110, y: 172, width: 144, height: 72), color: ink)
-    label("LessBar", x: 276, y: 184, size: 40, weight: .semibold)
+    label("Less Bar", x: 276, y: 184, size: 40, weight: .semibold)
     mark(NSRect(x: 748, y: 172, width: 144, height: 72), color: .white)
-    label("LessBar", x: 914, y: 184, size: 40, weight: .semibold, color: .white)
+    label("Less Bar", x: 914, y: 184, size: 40, weight: .semibold, color: .white)
     label("SMALL SIZES", x: 82, y: 58, size: 13, weight: .medium, color: muted)
     for (index, size) in [16, 24, 32, 48].enumerated() {
         appIcon(NSRect(x: 215 + index * 80, y: 42, width: size, height: size))
     }
     label("Monochrome / Vector master / 2026", x: 1020, y: 58, size: 15, color: muted)
 }
-print("Generated LessBar SVG, PDF, PNG, ICNS and brand preview.")
+print("Generated Less Bar SVG, PDF, PNG, ICNS and brand preview.")

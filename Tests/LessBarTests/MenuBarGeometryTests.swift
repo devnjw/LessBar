@@ -115,6 +115,7 @@ final class MenuBarGeometryTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let preferences = Preferences(defaults: defaults)
         preferences.showOnHover = true
+        preferences.showChevron = false
         let item = NSStatusBar.system.statusItem(withLength: 24)
         defer { NSStatusBar.system.removeStatusItem(item) }
         let engine = LengthMenuBarEngine(toggle: item)

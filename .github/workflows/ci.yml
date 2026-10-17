@@ -22,15 +22,15 @@ jobs:
         run: bash scripts/build-app.sh --universal
       - name: Validate packaged app
         run: |
-          codesign --verify --deep --strict dist/LessBar.app
-          ARCHS="$(lipo -archs dist/LessBar.app/Contents/MacOS/LessBar)"
+          codesign --verify --deep --strict "dist/Less Bar.app"
+          ARCHS="$(lipo -archs "dist/Less Bar.app/Contents/MacOS/LessBar")"
           [[ " $ARCHS " == *" arm64 "* && " $ARCHS " == *" x86_64 "* ]]
-          test -d dist/LessBar.app/Contents/Resources/LessBar_LessBar.bundle
-          plutil -lint dist/LessBar.app/Contents/Info.plist
+          test -d "dist/Less Bar.app/Contents/Resources/LessBar_LessBar.bundle"
+          plutil -lint "dist/Less Bar.app/Contents/Info.plist"
       - name: Archive development build
-        run: ditto -c -k --sequesterRsrc --keepParent dist/LessBar.app dist/LessBar-development.zip
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Less Bar.app" dist/Less-Bar-development.zip
       - uses: actions/upload-artifact@v7.0.2
         with:
-          name: LessBar-development-universal
-          path: dist/LessBar-development.zip
+          name: Less-Bar-development-universal
+          path: dist/Less-Bar-development.zip
           retention-days: 14

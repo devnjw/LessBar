@@ -1,6 +1,6 @@
 # Contributing
 
-LessBar is deliberately small. Please discuss new features in an issue before implementing them. Bug fixes, compatibility reports, accessibility improvements and translations are welcome.
+Less Bar is deliberately small. Please discuss new features in an issue before implementing them. Bug fixes, compatibility reports, accessibility improvements and translations are welcome.
 
 Read [AGENTS.md](AGENTS.md) for product principles and [Architecture](docs/ARCHITECTURE.md) for the code structure.
 

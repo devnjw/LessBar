@@ -75,6 +75,20 @@ final class InteractionPolicyTests: XCTestCase {
         XCTAssertTrue(policy.step(.init(now: 2, menuDisplayID: 1, emptyDisplayID: 1, clickOnEmpty: true), configuration: config).isEmpty)
     }
 
+    func testHoverAndClickAreIndependentAndDoNotRevealTwice() {
+        for hover in [false, true] {
+            for click in [false, true] {
+                var policy = InteractionPolicy()
+                let config = InteractionPolicy.Configuration(showOnClick: click, showOnHover: hover, hoverDelay: 0)
+                let actions = policy.step(.init(now: 0, menuDisplayID: 1, emptyDisplayID: 1,
+                    clickOnEmpty: true), configuration: config)
+                XCTAssertEqual(actions, hover || click ? [.revealNormal] : [])
+                XCTAssertTrue(policy.step(.init(now: 1, menuDisplayID: 1, emptyDisplayID: 1,
+                    clickOnEmpty: true), configuration: config).isEmpty)
+            }
+        }
+    }
+
     func testAfterExitTimerCancelsOnReentryAndRestartsOnNextExit() {
         var policy = InteractionPolicy()
         var config = InteractionPolicy.Configuration(rehideDelay: 1)
