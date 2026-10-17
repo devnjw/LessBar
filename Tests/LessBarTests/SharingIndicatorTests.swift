@@ -2,6 +2,23 @@ import XCTest
 @testable import LessBar
 
 final class SharingIndicatorTests: XCTestCase {
+    func testFailedOrUnplaceablePrivacyIndicatorBlocksCollapse() {
+        let area = CGRect(x: 0, y: 0, width: 1800, height: 33)
+        let boundary = CGRect(x: 1200, y: 0, width: 24, height: 33)
+        let left = CGRect(x: 1000, y: 0, width: 48, height: 33)
+        XCTAssertEqual(SharingIndicatorPlacement.action(indicator: left, boundary: boundary,
+            available: area, failed: false), .move(CGPoint(x: 1225, y: 16.5)))
+        XCTAssertEqual(SharingIndicatorPlacement.action(indicator: left, boundary: boundary,
+            available: area, failed: true), .blocked)
+        XCTAssertEqual(SharingIndicatorPlacement.action(indicator: left, boundary: nil,
+            available: nil, failed: false), .blocked)
+        XCTAssertEqual(SharingIndicatorPlacement.action(indicator: boundary, boundary: boundary,
+            available: area, failed: false), .blocked)
+        // A user can repair placement manually even after a failed attempt.
+        XCTAssertEqual(SharingIndicatorPlacement.action(indicator: left.offsetBy(dx: 250, dy: 0),
+            boundary: boundary, available: area, failed: true), .safe)
+    }
+
     func testInsetAccessibilityFrameIdentifiesExactlyOneSystemWindow() {
         let frame = CGRect(x: 2110, y: 3, width: 40, height: 24)
         let indicator = SharingIndicator(pid: 10, windowID: 1,

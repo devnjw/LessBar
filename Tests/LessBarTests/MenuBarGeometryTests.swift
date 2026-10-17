@@ -3,6 +3,21 @@ import XCTest
 @testable import LessBar
 
 final class MenuBarGeometryTests: XCTestCase {
+    @MainActor func testUnsupportedOSNeverHidesLegacySecondarySection() {
+        _ = NSApplication.shared
+        let item = NSStatusBar.system.statusItem(withLength: 24)
+        defer { NSStatusBar.system.removeStatusItem(item) }
+        let engine = LengthMenuBarEngine(toggle: item, osMajorVersion: 27)
+        defer { engine.stop() }
+        engine.configure(showDividers: true, alwaysHiddenEnabled: true, editing: false)
+        engine.reveal(all: false)
+        XCTAssertFalse(engine.alwaysCollapsed)
+        engine.hideAlwaysHidden()
+        XCTAssertFalse(engine.alwaysCollapsed)
+        XCTAssertFalse(engine.setCollapsed(true))
+        XCTAssertTrue(engine.isAllExpanded)
+    }
+
     func testRecoveryPreservesNativeChevronCenterAndBaselineOnEachDisplay() throws {
         let screens: [(UInt32, CGRect, CGRect?)] = [
             (1, CGRect(x: 0, y: 0, width: 1728, height: 1117),

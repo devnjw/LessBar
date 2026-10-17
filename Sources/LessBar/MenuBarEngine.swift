@@ -35,7 +35,7 @@ final class LengthMenuBarEngine {
     private var mirrorIsSecondary: [Int: Bool] = [:]
     private(set) var isCollapsed = false
     private(set) var alwaysCollapsed = false
-    let isSupported = ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27
+    let isSupported: Bool
     var isAllExpanded: Bool { !isCollapsed && !alwaysCollapsed }
     var normalItem: NSStatusItem { normal.item }
     var secondaryItem: NSStatusItem? { alwaysHidden?.item }
@@ -52,7 +52,10 @@ final class LengthMenuBarEngine {
         normal.item.isVisible && Set(anchors.map(\.displayID)) == Set(NSScreen.screens.map(MenuBarGeometry.displayID))
     }
 
-    init(toggle: NSStatusItem) { normal = StatusBoundary(item: toggle) }
+    init(toggle: NSStatusItem, osMajorVersion: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion) {
+        normal = StatusBoundary(item: toggle)
+        isSupported = (13..<27).contains(osMajorVersion)
+    }
 
     func configure(showDividers: Bool, alwaysHiddenEnabled: Bool, editing: Bool) {
         self.showDividers = showDividers
@@ -85,12 +88,12 @@ final class LengthMenuBarEngine {
 
     func reveal(all: Bool) {
         isCollapsed = false
-        alwaysCollapsed = alwaysHidden != nil && !all
+        alwaysCollapsed = isSupported && alwaysHidden != nil && !all
         refreshLayout()
     }
 
     func hideAlwaysHidden() {
-        alwaysCollapsed = alwaysHidden != nil
+        alwaysCollapsed = isSupported && alwaysHidden != nil
         refreshLayout()
     }
 
@@ -105,6 +108,11 @@ final class LengthMenuBarEngine {
     func synchronizeMirrorSpacing() {
         let statusLevel = Int(CGWindowLevelForKey(.statusWindow))
         let windows = NSApp.windows.filter { $0.level.rawValue == statusLevel }
+        // Drop stale constraints and section assignments after AppKit discards
+        // a mirror during a display/Space change.
+        let liveIDs = Set(windows.map(\.windowNumber))
+        mirrorPadding = mirrorPadding.filter { liveIDs.contains($0.key) }
+        mirrorIsSecondary = mirrorIsSecondary.filter { liveIDs.contains($0.key) }
         if let primary = normal.item.button?.window { mirrorIsSecondary[primary.windowNumber] = false }
         if let secondary = alwaysHidden?.item.button?.window { mirrorIsSecondary[secondary.windowNumber] = true }
         if alwaysHidden == nil {
@@ -171,5 +179,7 @@ final class LengthMenuBarEngine {
         reveal(all: true)
         if let alwaysHidden { NSStatusBar.system.removeStatusItem(alwaysHidden.item) }
         alwaysHidden = nil
+        mirrorPadding.removeAll()
+        mirrorIsSecondary.removeAll()
     }
 }

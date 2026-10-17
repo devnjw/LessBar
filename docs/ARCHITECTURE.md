@@ -34,7 +34,11 @@ The engine is the source of truth for the published state. Native controls and h
 
 `InteractionPolicy` is a pure monotonic-time state machine. Preferences and visibility are shared by all displays; hover dwell resets when changing display. `MenuBarGeometry` excludes application-menu rectangles, status items and the notch. Hover detection uses Accessibility to read menu geometry; unknown geometry cannot trigger reveal.
 
+Accessibility geometry uses a shared reader with a 30 ms per-message timeout and a 100 ms snapshot budget. It checks remote CF value types and finite dimensions and rejects partial menu snapshots. Menu geometry is read once for all displays, only while the pointer is in a menu bar; right-click refreshes immediately so fast entry between polling ticks still works. Status-item occupancy and open-menu state share one Window Server snapshot per interaction refresh.
+
 `LengthMenuBarEngine` retains native boundaries and preserves their autosaved positions. Native content-width constraints and padding are synchronized for every retained mirrored window; setting NSStatusItem.length alone changes only the active display on the tested macOS 26 build. Invisible expanded boundaries use a one-point window. Native status windows are tracked through AppKit rather than owner PID, because Window Server reports them under Control Center. External collision checks exclude native window IDs or an exact matching frame.
+
+Mirror caches discard entries for windows that AppKit no longer owns. Recovery monitoring is idempotent, timers capture their owner weakly, and retry callbacks verify timer identity. Explicit `stop()` still owns panel teardown and monitor removal.
 
 `RecoveryController` creates one collision-checked panel per display and refuses partial display coverage. The chevron and recovery panels are hidden only when Show Chevron is off with Accessibility permission. Permission changes reconfigure native mirrors and collapsed recovery panels at the next geometry refresh. Visible panels still follow each display's system menu bar visibility. Display changes cancel stale work, reveal while layout settles, then restore the shared collapsed state. Reopening settings also reveals the icons for recovery.
 
@@ -59,6 +63,8 @@ The width strategy is enabled on macOS 13–26, with macOS 27+ explicitly disabl
 With Accessibility permission, sharing-control placement reads only Control Center's extras menu bar and the exact `com.apple.menuextra.audiovideo` identifier. Its inset AX bounds must match exactly one on-screen status window owned by Control Center. Ambiguous geometry, unavailable permission and unknown identifiers never produce a drag. The native boundary is not moved to another group.
 
 Reordering runs only while expanded and with no mouse button, modifier or menu held. A pending close waits for this bounded handoff; the normal interaction policy is suspended during generated Command-drag events. User input interrupts the operation and allows a later retry after a short delay. The result is checked against fresh indicator/boundary geometry, not inferred from event delivery. Failure is reported in settings and is not retried continuously. Reopening settings permits another attempt. Display/Space changes and shutdown cancel the operation and release the generated drag.
+
+A known indicator with failed, ambiguous or unavailable placement blocks collapse rather than allowing a failed drag to hide it. This is not a guarantee for unidentified indicators or missing Accessibility permission. On unsupported OS versions, both the normal and legacy always-hidden sections stay expanded.
 
 The display name and distributed bundle are `Less Bar` and `Less Bar.app`. The Swift module/executable remain `LessBar`, and preference/placement namespaces stay stable across the rename. The public bundle ID is `io.github.devnjw.LessBar`. The existing `TidyBar.Toggle` autosave key is retained to preserve placement. Only known setup/placement keys migrate from `local.tidybar.app`, once, without overwriting new choices. Login registration is not migrated between bundle identities.
 

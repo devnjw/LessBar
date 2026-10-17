@@ -84,8 +84,12 @@ final class MenuBarController: NSObject {
             if consumed { return nil }
             return event
         }
-        interactionTimer = Timer(timeInterval: 0.05, target: self,
-            selector: #selector(checkInteraction), userInfo: nil, repeats: true)
+        interactionTimer = Timer(timeInterval: 0.05, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            MainActor.assumeIsolated {
+                self.checkInteraction()
+            }
+        }
         RunLoop.main.add(interactionTimer!, forMode: .common)
     }
 
@@ -269,7 +273,12 @@ final class MenuBarController: NSObject {
             clickPending = true
             geometryAt = 0
         }
-        if event.type == .rightMouseUp && isEmpty(point) { showContextMenu(at: point) }
+        if event.type == .rightMouseUp {
+            // Entry and click can occur between polling ticks. Refresh now so
+            // skipping idle AX reads cannot swallow the first empty-space menu.
+            refreshGeometry()
+            if isEmpty(point) { showContextMenu(at: point) }
+        }
     }
 
     private func refreshGeometry() {
@@ -278,16 +287,18 @@ final class MenuBarController: NSObject {
         if AXIsProcessTrusted() != state.accessibilityGranted { applyPreferences() }
         engine.synchronizeMirrorSpacing()
         geometryAt = now
-        cachedStatusFrames = MenuBarOccupancy.statusItemFrames()
+        let occupancy = MenuBarOccupancy.snapshot()
+        cachedStatusFrames = occupancy?.statusFrames
         cachedMenus.removeAll()
-        if state.accessibilityGranted {
+        if state.accessibilityGranted, MenuBarGeometry.screen(at: NSEvent.mouseLocation) != nil {
+            let measuredFrames = MenuBarGeometry.applicationMenuFrames()
             for screen in NSScreen.screens {
-                if let menus = MenuBarGeometry.applicationMenuFrames(on: screen) {
+                if let menus = MenuBarGeometry.applicationMenuFrames(on: screen, measuredFrames: measuredFrames) {
                     cachedMenus[MenuBarGeometry.displayID(screen)] = menus
                 }
             }
         }
-        nativeMenuOpen = MenuBarOccupancy.hasOpenMenu()
+        nativeMenuOpen = occupancy?.hasOpenMenu ?? true
     }
 
     private func isEmpty(_ point: CGPoint) -> Bool {
@@ -406,15 +417,21 @@ final class MenuBarController: NSObject {
             state.sharingFeedback = ""
             return false
         }
-        guard let (boundary, available) = sharingBoundary(for: indicator) else { return false }
-        if SharingIndicatorPlacement.isToRight(indicator: indicator.frame, boundary: boundary) {
+        let geometry = sharingBoundary(for: indicator)
+        let destination: CGPoint
+        switch SharingIndicatorPlacement.action(indicator: indicator.frame,
+            boundary: geometry?.0, available: geometry?.1, failed: failedSharingWindow == indicator.windowID) {
+        case .safe:
             failedSharingWindow = nil
             state.sharingFeedback = ""
             return false
+        case .blocked:
+            state.sharingFeedback = L10n.sharingPlacementFailed
+            // Treat the collapse request as handled, leaving icons expanded.
+            // Retrying each timer tick must never turn a failed drag into hiding.
+            return thenCollapse
+        case .move(let point): destination = point
         }
-        guard failedSharingWindow != indicator.windowID,
-              let destination = SharingIndicatorPlacement.destination(indicator: indicator.frame,
-                boundary: boundary, available: available) else { return false }
         collapseAfterSharing = collapseAfterSharing || thenCollapse
         guard NSEvent.pressedMouseButtons == 0,
               NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock).isEmpty,

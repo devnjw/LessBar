@@ -3,6 +3,36 @@ import XCTest
 @testable import LessBar
 
 final class RecoveryHandoffTests: XCTestCase {
+    @MainActor func testRepeatedStartDoesNotLeaveOrphanedPollingAfterStop() {
+        _ = NSApplication.shared
+        var queries = 0
+        var recovery: RecoveryController? = RecoveryController(occupiedFrames: { [] }, visibleMenuBarDisplays: {
+            queries += 1
+            return Set(NSScreen.screens.map(MenuBarGeometry.displayID))
+        })
+        weak var weakRecovery = recovery
+        XCTAssertTrue(recovery!.prepare(anchors: anchors(), showControls: true))
+        recovery!.startMonitoring()
+        recovery!.startMonitoring()
+        recovery!.stop()
+        recovery = nil
+        XCTAssertNil(weakRecovery, "An overwritten timer must not retain the stopped controller")
+        let stoppedQueries = queries
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.25))
+        XCTAssertEqual(queries, stoppedQueries)
+    }
+
+    @MainActor func testMonitoringTimersDoNotRetainTheirOwner() {
+        _ = NSApplication.shared
+        var controller: RecoveryController? = recovery(occupiedFrames: { [] })
+        weak var weakController = controller
+        XCTAssertTrue(controller!.prepare(anchors: anchors(), showControls: false))
+        controller!.startMonitoring()
+        controller = nil
+        XCTAssertNil(weakController)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.6))
+    }
+
     @MainActor func testReplacementIsVisibleBeforeNativeChevronDisappears() throws {
         _ = NSApplication.shared
         let recovery = recovery(occupiedFrames: { [] })

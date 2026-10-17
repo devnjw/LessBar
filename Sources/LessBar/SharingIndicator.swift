@@ -27,20 +27,15 @@ enum SharingIndicatorLocator {
         guard AXIsProcessTrusted(),
               let process = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.controlcenter").first else { return nil }
         let app = AXUIElementCreateApplication(process.processIdentifier)
-        AXUIElementSetMessagingTimeout(app, 0.15)
-        guard let value = attribute(app, kAXExtrasMenuBarAttribute),
+        let reader = AccessibilityGeometryReader()
+        guard let value = reader.attribute(app, kAXExtrasMenuBarAttribute),
               CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         let bar = unsafeDowncast(value, to: AXUIElement.self)
-        guard let children = attribute(bar, kAXChildrenAttribute) as? [AXUIElement],
+        guard let children = reader.attribute(bar, kAXChildrenAttribute) as? [AXUIElement],
               let item = children.first(where: {
-                  attribute($0, kAXIdentifierAttribute) as? String == SharingIndicator.identifier
+                  reader.attribute($0, kAXIdentifierAttribute) as? String == SharingIndicator.identifier
               }),
-              let position = attribute(item, kAXPositionAttribute), CFGetTypeID(position) == AXValueGetTypeID(),
-              let size = attribute(item, kAXSizeAttribute), CFGetTypeID(size) == AXValueGetTypeID() else { return nil }
-        var point = CGPoint.zero
-        var extent = CGSize.zero
-        guard AXValueGetValue(unsafeDowncast(position, to: AXValue.self), .cgPoint, &point),
-              AXValueGetValue(unsafeDowncast(size, to: AXValue.self), .cgSize, &extent),
+              let frame = reader.frame(item),
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                 kCGNullWindowID) as? [[String: Any]] else { return nil }
         let candidates = windows.compactMap { window -> SharingIndicator? in
@@ -52,19 +47,25 @@ enum SharingIndicatorLocator {
                   let frame = CGRect(dictionaryRepresentation: bounds) else { return nil }
             return SharingIndicator(pid: process.processIdentifier, windowID: number, frame: frame)
         }
-        return SharingIndicator.matchingWindow(accessibilityFrame: CGRect(origin: point, size: extent), windows: candidates)
-    }
-
-    private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
-        var result: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, name as CFString, &result) == .success else { return nil }
-        return result
+        return SharingIndicator.matchingWindow(accessibilityFrame: frame, windows: candidates)
     }
 }
 
 /// Geometry is deliberately independent of the native hiding boundary. Only
 /// the privacy indicator is reordered; other items keep their section.
 enum SharingIndicatorPlacement {
+    enum Action: Equatable { case safe, move(CGPoint), blocked }
+
+    /// A failed move is not permission to hide a known privacy indicator.
+    static func action(indicator: CGRect, boundary: CGRect?, available: CGRect?, failed: Bool) -> Action {
+        guard let boundary, let available else { return .blocked }
+        if isToRight(indicator: indicator, boundary: boundary) { return .safe }
+        guard !failed, let point = destination(indicator: indicator, boundary: boundary, available: available) else {
+            return .blocked
+        }
+        return .move(point)
+    }
+
     static func destination(indicator: CGRect, boundary: CGRect, available: CGRect) -> CGPoint? {
         guard indicator.width > 0, indicator.height > 0,
               boundary.width > 0, boundary.height > 0,

@@ -111,13 +111,21 @@ final class RecoveryController: NSObject {
     }
 
     func startMonitoring() {
-        guard !sessions.isEmpty else { return }
+        guard !sessions.isEmpty, safetyTimer == nil else { return }
         validation = LayoutRecovery(now: ProcessInfo.processInfo.systemUptime)
-        safetyTimer = Timer(timeInterval: 0.5, target: self,
-            selector: #selector(checkLayoutSafety), userInfo: nil, repeats: true)
+        safetyTimer = Timer(timeInterval: 0.5, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            MainActor.assumeIsolated {
+                self.checkLayoutSafety()
+            }
+        }
         RunLoop.main.add(safetyTimer!, forMode: .common)
-        visibilityTimer = Timer(timeInterval: 0.1, target: self,
-            selector: #selector(refreshVisibility), userInfo: nil, repeats: true)
+        visibilityTimer = Timer(timeInterval: 0.1, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            MainActor.assumeIsolated {
+                self.refreshVisibility()
+            }
+        }
         RunLoop.main.add(visibilityTimer!, forMode: .common)
         refreshVisibility()
         scheduleRetry()
@@ -178,8 +186,13 @@ final class RecoveryController: NSObject {
 
     private func scheduleRetry() {
         retryTimer?.invalidate()
-        retryTimer = Timer(timeInterval: LayoutRecovery.retryInterval, target: self,
-            selector: #selector(checkLayoutSafety), userInfo: nil, repeats: false)
+        retryTimer = Timer(timeInterval: LayoutRecovery.retryInterval, repeats: false) { [weak self] timer in
+            let timerID = ObjectIdentifier(timer)
+            MainActor.assumeIsolated {
+                guard let self, self.retryTimer.map(ObjectIdentifier.init) == timerID else { return }
+                self.checkLayoutSafety()
+            }
+        }
         RunLoop.main.add(retryTimer!, forMode: .common)
     }
 }

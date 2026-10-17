@@ -73,27 +73,32 @@ enum MenuBarGeometry {
         return !(applicationMenus + statusItems).contains { $0.insetBy(dx: -2, dy: 0).contains(point) }
     }
 
-    /// Accessibility exposes application-menu children, not screenshots or content.
-    static func applicationMenuFrames(on screen: NSScreen) -> [CGRect]? {
+    /// Capture once for all displays. A partial snapshot cannot prove emptiness.
+    @MainActor static func applicationMenuFrames() -> [CGRect]? {
         guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication,
               let primary = NSScreen.screens.first else { return nil }
+        let reader = AccessibilityGeometryReader()
         let element = AXUIElementCreateApplication(app.processIdentifier)
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXMenuBarAttribute as CFString, &value) == .success,
-              let value else { return nil }
+        guard let value = reader.attribute(element, kAXMenuBarAttribute),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         let menu = unsafeDowncast(value, to: AXUIElement.self)
-        var childrenValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(menu, kAXChildrenAttribute as CFString, &childrenValue) == .success,
-              let children = childrenValue as? [AXUIElement] else { return nil }
-        var result: [CGRect] = []
-        for child in children {
-            guard let frame = accessibilityFrame(child, primaryMaxY: primary.frame.maxY) else { continue }
-            if menuBarRect(screen).intersects(frame) { result.append(frame) }
+        guard let children = reader.attribute(menu, kAXChildrenAttribute) as? [AXUIElement],
+              let frames = AccessibilityGeometryReader.completeFrames(of: children, read: reader.frame) else { return nil }
+        return frames.map {
+            LayoutSafety.appKitFrame(fromWindowServer: $0, primaryScreenMaxY: primary.frame.maxY)
         }
-        // AX often reports only the active display. Translate measured menu widths
-        // to the other display; the empty area remains conservative on notched screens.
+    }
+
+    @MainActor static func applicationMenuFrames(on screen: NSScreen) -> [CGRect]? {
+        applicationMenuFrames(on: screen, measuredFrames: applicationMenuFrames())
+    }
+
+    @MainActor static func applicationMenuFrames(on screen: NSScreen, measuredFrames: [CGRect]?) -> [CGRect]? {
+        guard let frames = measuredFrames, !frames.isEmpty else { return nil }
+        var result = frames.filter { menuBarRect(screen).intersects($0) }
+        // AX often reports only the active display. Translate measured widths;
+        // exclude the notch conservatively on each destination display.
         if result.isEmpty {
-            let frames = children.compactMap { accessibilityFrame($0, primaryMaxY: primary.frame.maxY) }
             guard let first = frames.first,
                   let source = NSScreen.screens.first(where: { menuBarRect($0).intersects(first) }) else { return nil }
             result = frames.map { $0.offsetBy(dx: screen.frame.minX - source.frame.minX,
@@ -104,17 +109,5 @@ enum MenuBarGeometry {
                 width: max(0, right.minX - left.maxX), height: max(30, NSStatusBar.system.thickness)))
         }
         return result.isEmpty ? nil : result
-    }
-
-    private static func accessibilityFrame(_ item: AXUIElement, primaryMaxY: CGFloat) -> CGRect? {
-        var position: CFTypeRef?, size: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(item, kAXPositionAttribute as CFString, &position) == .success,
-              AXUIElementCopyAttributeValue(item, kAXSizeAttribute as CFString, &size) == .success,
-              let position, let size else { return nil }
-        var point = CGPoint.zero, extent = CGSize.zero
-        guard AXValueGetValue(unsafeDowncast(position, to: AXValue.self), .cgPoint, &point),
-              AXValueGetValue(unsafeDowncast(size, to: AXValue.self), .cgSize, &extent) else { return nil }
-        return LayoutSafety.appKitFrame(fromWindowServer: CGRect(origin: point, size: extent),
-                                       primaryScreenMaxY: primaryMaxY)
     }
 }

@@ -1,6 +1,11 @@
 import AppKit
 
 enum MenuBarOccupancy {
+    struct Snapshot {
+        let statusFrames: [CGRect]
+        let hasOpenMenu: Bool
+    }
+
     /// On macOS 26, Control Center owns the Window Server records even for
     /// another app's status items. Match native window numbers, never owner PID.
     @MainActor
@@ -10,21 +15,10 @@ enum MenuBarOccupancy {
     }
 
     @MainActor
-    static func statusItemFrames() -> [CGRect]? { queryStatusFrames(own: false) }
+    static func statusItemFrames() -> [CGRect]? { snapshot()?.statusFrames }
 
     @MainActor
-    static func hasOpenMenu() -> Bool {
-        guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
-                kCGNullWindowID) as? [[String: Any]] else { return true }
-        let level = Int(CGWindowLevelForKey(.popUpMenuWindow))
-        return windows.contains { window in
-            guard let layer = window[kCGWindowLayer as String] as? Int else { return false }
-            return layer == level && (window[kCGWindowAlpha as String] as? Double ?? 1) > 0
-        }
-    }
-
-    @MainActor
-    private static func queryStatusFrames(own: Bool) -> [CGRect]? {
+    static func snapshot() -> Snapshot? {
         guard let primaryScreen = NSScreen.screens.first,
               let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                  kCGNullWindowID) as? [[String: Any]] else { return nil }
@@ -32,7 +26,7 @@ enum MenuBarOccupancy {
         let nativeWindows = NSApp.windows.filter { $0.level.rawValue == layer }
         let ownIDs = Set(nativeWindows.map(\.windowNumber))
         let ownFrames = nativeWindows.map(\.frame)
-        return windows.compactMap { window in
+        let frames: [CGRect] = windows.compactMap { window in
             guard let windowLayer = window[kCGWindowLayer as String] as? Int,
                   let number = window[kCGWindowNumber as String] as? Int,
                   windowLayer == layer,
@@ -44,7 +38,13 @@ enum MenuBarOccupancy {
                 abs($0.minX - frame.minX) < 0.5 && abs($0.minY - frame.minY) < 0.5 &&
                 abs($0.width - frame.width) < 0.5 && abs($0.height - frame.height) < 0.5
             }
-            return ours == own ? frame : nil
+            return ours ? nil : frame
         }
+        let menuLevel = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        let hasOpenMenu = windows.contains {
+            $0[kCGWindowLayer as String] as? Int == menuLevel &&
+            ($0[kCGWindowAlpha as String] as? Double ?? 1) > 0
+        }
+        return Snapshot(statusFrames: frames, hasOpenMenu: hasOpenMenu)
     }
 }
