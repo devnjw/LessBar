@@ -53,7 +53,9 @@ struct SettingsView: View {
             .padding(.bottom, 24)
 
             generalSettings
-                .padding(.bottom, 28)
+
+            Divider()
+                .padding(.vertical, 14)
 
             DisclosureGroup(isExpanded: advancedExpansion) {
                 advancedSettings.padding(.top, 12)
