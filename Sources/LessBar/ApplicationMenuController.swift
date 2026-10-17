@@ -6,9 +6,18 @@ final class ApplicationMenuController {
     private var previousApp: NSRunningApplication?
     private var originalMenu: NSMenu?
     private var active = false
+    private var settingsOpen = false
+
+    func setSettingsOpen(_ open: Bool) {
+        settingsOpen = open
+        // Hand menu ownership back before presenting settings. A later icon
+        // collapse must not demote an app whose settings are still open.
+        restore()
+        NSApp.setActivationPolicy(open ? .regular : .accessory)
+    }
 
     func makeRoomIfNeeded(enabled: Bool, screen: NSScreen?, settingsVisible: Bool) {
-        guard enabled, !active, !settingsVisible, let screen,
+        guard enabled, !active, !settingsOpen, !settingsVisible, let screen,
               !NSApp.currentSystemPresentationOptions.contains(.fullScreen),
               !NSApp.currentSystemPresentationOptions.contains(.autoHideMenuBar),
               !NSApp.currentSystemPresentationOptions.contains(.hideMenuBar),
@@ -29,8 +38,8 @@ final class ApplicationMenuController {
         guard active else { return }
         let stillOwnFocus = NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
         NSApp.mainMenu = originalMenu
-        NSApp.setActivationPolicy(.accessory)
-        if stillOwnFocus, let previousApp, !previousApp.isTerminated {
+        NSApp.setActivationPolicy(settingsOpen ? .regular : .accessory)
+        if !settingsOpen, stillOwnFocus, let previousApp, !previousApp.isTerminated {
             previousApp.activate(options: [.activateIgnoringOtherApps])
         }
         previousApp = nil

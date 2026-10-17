@@ -21,7 +21,6 @@ enum L10n {
     static var positionUnavailable: String { text("positionUnavailable") }
     static var positionRecovery: String { text("positionRecovery") }
     static var ok: String { text("ok") }
-    static var guideTitle: String { text("guideTitle") }
     static var dragInstruction: String { text("dragInstruction") }
     static var launchAtLogin: String { text("launchAtLogin") }
     static var unsupported: String { text("unsupported") }
@@ -32,30 +31,15 @@ enum L10n {
     static var expanded: String { text("expanded") }
     static var loginApproval: String { text("loginApproval") }
     static var loginFailed: String { text("loginFailed") }
-    static var settingsTabs: String { text("settingsTabs") }
-    static var generalTab: String { text("generalTab") }
-    static var advancedTab: String { text("advancedTab") }
-    static var showOnClick: String { text("showOnClick") }
-    static var showOnClickDetail: String { text("showOnClickDetail") }
     static var showOnHover: String { text("showOnHover") }
     static var showOnHoverDetail: String { text("showOnHoverDetail") }
+    static var timing: String { text("timing") }
     static var hoverDelay: String { text("hoverDelay") }
     static var autoRehide: String { text("autoRehide") }
     static var autoRehideDetail: String { text("autoRehideDetail") }
-    static var rehideStrategy: String { text("rehideStrategy") }
-    static var afterExitStrategy: String { text("afterExitStrategy") }
-    static var timedStrategy: String { text("timedStrategy") }
+    static var autoRehideRequiredForHover: String { text("autoRehideRequiredForHover") }
     static var rehideDelay: String { text("rehideDelay") }
-    static var showSectionDividers: String { text("showSectionDividers") }
-    static var showSectionDividersDetail: String { text("showSectionDividersDetail") }
-    static var showAllOnCommandDrag: String { text("showAllOnCommandDrag") }
-    static var showAllOnCommandDragDetail: String { text("showAllOnCommandDragDetail") }
-    static var enableAlwaysHidden: String { text("enableAlwaysHidden") }
-    static var enableAlwaysHiddenDetail: String { text("enableAlwaysHiddenDetail") }
-    static var temporaryShowDelay: String { text("temporaryShowDelay") }
     static var temporaryShowAll: String { text("temporaryShowAll") }
-    static var hideApplicationMenus: String { text("hideApplicationMenus") }
-    static var hideApplicationMenusDetail: String { text("hideApplicationMenusDetail") }
     static var allowAccessibility: String { text("allowAccessibility") }
     static var accessibilityNeeded: String { text("accessibilityNeeded") }
     static func secondsFormat(_ value: Double) -> String {

@@ -3,7 +3,7 @@
 <p align="center">A little less in your Mac menu bar.</p>
 <p align="center"><a href="https://github.com/devnjw/LessBar/releases">Download</a> · <a href="docs/README.ko.md">한국어</a> · <a href="https://github.com/devnjw/LessBar/issues">Report a bug</a></p>
 
-Hide menu bar icons with an invisible boundary, then reveal them by hovering over or clicking an empty area of the menu bar. A clickable chevron is optional.
+Hide menu bar icons, then click the chevron to reveal them. Optional hover reveal keeps the same simple controls.
 
 ## Install
 
@@ -17,12 +17,12 @@ The release notes state whether a build is Apple-notarized. A file labeled **unn
 
 ## Use
 
-- Hold **⌘ Command** over the menu bar to reveal all sections and their boundaries, then drag icons across a boundary to choose which ones are hidden. This editing behavior can be disabled in Advanced settings.
-- Hover over or click an empty menu bar area to reveal hidden icons. Grant Accessibility access from settings to enable empty-area detection.
-- Enable **Show section dividers** for a clickable chevron. Right-click a divider or an empty menu bar area for **Settings** and **Quit**.
-- Reopen LessBar from Applications or Raycast for settings, including the hide/show action and **Launch at Login**.
+- Hold **⌘ Command** over the menu bar to reveal all sections and their boundaries, then drag icons across a boundary to choose which ones are hidden. Rearranging is always available; no setting is required.
+- Click the chevron to reveal or hide icons when hover is off. Right-click it for **Settings** and **Quit**.
+- Optionally enable **Reveal on Hover** to reveal icons over empty menu bar space. With Accessibility access, hover hides the chevron; without permission, the chevron stays available. Right-click empty menu bar space for the same native menu.
+- Reopen LessBar from Applications or Raycast for settings, to change settings such as **Launch at Login**.
 
-English and Korean follow your macOS language preference. Closing the settings window keeps LessBar running. To update, quit LessBar, replace the app in Applications, then reopen it. There is no automatic updater.
+English and Korean follow your macOS language preference. While Settings is open, including when minimized, LessBar appears in the Dock and ⌘Tab. Closing Settings returns to menu-bar-only mode and keeps LessBar running. To update, quit LessBar, replace the app in Applications, then reopen it. There is no automatic updater.
 
 ## Recovery and limits
 
@@ -36,7 +36,7 @@ This is an early release using a status item's width to hide neighbors. Notched 
 
 ## Privacy
 
-No analytics, network requests, account or Screen Recording access. Accessibility access identifies the system screen-sharing control and reorders it using Command-drag events. Empty-area click and hover use the same permission to read application-menu positions and sizes. The app reads menu bar identifiers and geometry without capturing images or titles. Launch at Login is opt-in and managed by macOS.
+No analytics, network requests, account or Screen Recording access. Accessibility access identifies the system screen-sharing control and reorders it using Command-drag events. Hover detection uses the same permission to read application-menu positions and sizes. The app reads menu bar identifiers and geometry without capturing images or titles. Launch at Login is opt-in and managed by macOS.
 
 ## Build from source
 
@@ -64,10 +64,14 @@ See [Architecture](docs/ARCHITECTURE.md), [Contributing](CONTRIBUTING.md) and [R
 
 [MIT](LICENSE). The repository and initial preview are available at no charge.
 
-## Reveal preferences
+## Settings
 
-Settings provide reveal on an empty-space click or hover, configurable hover delay, timed or pointer-exit rehide, optional dividers, Command-drag editing, an optional always-hidden section with temporary reveal, and optional application-menu hiding when space is limited. Click and hover need Accessibility access to distinguish application menus from empty space. No screen-recording access is requested.
+Use the chevron or hover to reveal icons. The native menu provides **Settings** and **Quit**; only Quit has a shortcut (**⌘Q**). Reopening LessBar still reveals icons for recovery.
 
-Visibility is shared across all available native menu bars. On macOS 26, native mirrored windows receive the same width and each display has its own collision-checked recovery control when dividers are enabled. With dividers off, invisible boundaries occupy at most one point rather than leaving a button-sized gap. Reopen LessBar from Applications or Raycast to access settings.
+The main window has three settings: **Launch at Login**, **Reveal on Hover**, and **Automatically Hide**. Launch at Login and hover reveal default to off; automatic hiding defaults to on. While hover is enabled, Automatically Hide stays on and cannot be changed. Turning hover off restores the previous automatic-hide choice, even after restarting the app. Existing choices are preserved when upgrading.
 
-Rehide delay ranges from 0 to 10 seconds in 0.1-second steps. Zero hides immediately when the selected rehide condition is reached and no menu or drag is active.
+Click the **Timing** title row or chevron to expand it. The window grows smoothly downward with its top edge fixed. Adjust the hover delay (0–2 seconds) and hide delay (0–10 seconds), both in 0.1-second steps. Each control is enabled when its corresponding feature is on. Automatic hiding starts after the pointer leaves the menu bar and waits while a menu, drag, or settings window is active. Zero hides as soon as those interactions finish.
+
+The chevron hides only while hover is enabled with Accessibility permission, and returns if permission is lost or hover is turned off. Command-drag editing temporarily displays the boundaries. Empty-space click reveal and application-menu hiding are no longer enabled. All native menu bars share one visibility state, with per-display collision checks and recovery controls.
+
+Upgrades preserve an already-enabled always-hidden section and its placement. Right-click the chevron or empty menu bar space in hover mode and choose **Show all sections temporarily**, or reopen LessBar, to recover those items. Command-drag can move them back into the normal hidden or always-visible section. New installs do not create an always-hidden section.

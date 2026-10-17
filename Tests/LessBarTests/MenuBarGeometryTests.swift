@@ -107,4 +107,32 @@ final class MenuBarGeometryTests: XCTestCase {
         engine.configure(showDividers: true, alwaysHiddenEnabled: false, editing: false)
         XCTAssertGreaterThan(window.frame.width, 1)
     }
+
+    @MainActor func testHoverBoundaryReturnsForEditingAndMissingPermission() throws {
+        _ = NSApplication.shared
+        let suite = "LessBarTests.geometry.hover.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.showOnHover = true
+        let item = NSStatusBar.system.statusItem(withLength: 24)
+        defer { NSStatusBar.system.removeStatusItem(item) }
+        let engine = LengthMenuBarEngine(toggle: item)
+        let window = try XCTUnwrap(item.button?.window)
+        engine.configure(showDividers: preferences.showsChevron(accessibilityGranted: true),
+            alwaysHiddenEnabled: false, editing: false)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        engine.synchronizeMirrorSpacing()
+        XCTAssertLessThanOrEqual(window.frame.width, 1)
+        engine.configure(showDividers: preferences.showsChevron(accessibilityGranted: true),
+            alwaysHiddenEnabled: false, editing: true)
+        XCTAssertGreaterThan(window.frame.width, 1)
+        engine.configure(showDividers: preferences.showsChevron(accessibilityGranted: true),
+            alwaysHiddenEnabled: false, editing: false)
+        XCTAssertLessThanOrEqual(window.frame.width, 1)
+        engine.configure(showDividers: preferences.showsChevron(accessibilityGranted: false),
+            alwaysHiddenEnabled: false, editing: false)
+        XCTAssertGreaterThan(window.frame.width, 1)
+        XCTAssertTrue(item.isVisible) // The boundary retains its saved position.
+    }
 }

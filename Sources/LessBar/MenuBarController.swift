@@ -89,6 +89,10 @@ final class MenuBarController: NSObject {
 
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
+    private var showsChevron: Bool {
+        preferences.showsChevron(accessibilityGranted: state.accessibilityGranted)
+    }
+
     private var configuration: InteractionPolicy.Configuration {
         .init(showOnClick: preferences.showOnClick, showOnHover: preferences.showOnHover,
               hoverDelay: preferences.hoverDelay, autoRehide: preferences.autoRehide,
@@ -109,9 +113,10 @@ final class MenuBarController: NSObject {
     }
 
     private func applyPreferences() {
+        state.accessibilityGranted = AXIsProcessTrusted()
         let collapsed = engine.isCollapsed
         recovery.stop()
-        engine.configure(showDividers: preferences.showSectionDividers,
+        engine.configure(showDividers: showsChevron,
             alwaysHiddenEnabled: preferences.enableAlwaysHidden, editing: editing)
         if let secondary = engine.secondaryItem { configureNativeButton(secondary) }
         if !preferences.hideApplicationMenus { applicationMenus.restore() }
@@ -143,7 +148,7 @@ final class MenuBarController: NSObject {
         let anchors = engine.anchors
         lastAnchors = anchors
         guard !anchors.isEmpty,
-              recovery.prepare(anchors: anchors, showControls: preferences.showSectionDividers),
+              recovery.prepare(anchors: anchors, showControls: showsChevron),
               recovery.handoffToCollapsed({ engine.setCollapsed(true) }) else {
             recovery.stop()
             if reportFailure { state.feedback = L10n.positionRecovery }
@@ -160,7 +165,7 @@ final class MenuBarController: NSObject {
 
     private func restartRecovery() {
         let anchors = lastAnchors.isEmpty ? engine.anchors : lastAnchors
-        if recovery.prepare(anchors: anchors, showControls: preferences.showSectionDividers) {
+        if recovery.prepare(anchors: anchors, showControls: showsChevron) {
             recovery.startMonitoring()
         } else { reveal() }
     }
@@ -189,7 +194,11 @@ final class MenuBarController: NSObject {
 
     func requestAccessibility() {
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
-        state.accessibilityGranted = AXIsProcessTrusted()
+        applyPreferences()
+    }
+
+    func setSettingsOpen(_ open: Bool) {
+        applicationMenus.setSettingsOpen(open)
     }
 
     func retrySharingPlacement() {
@@ -218,13 +227,12 @@ final class MenuBarController: NSObject {
 
     private func updateButton() {
         state.isCollapsed = engine.isCollapsed
-        state.accessibilityGranted = AXIsProcessTrusted()
         for item in [toggle, engine.secondaryItem].compactMap({ $0 }) {
             guard let button = item.button else { continue }
             button.title = ""
             if editing {
                 ChevronAppearance.configureDivider(button)
-            } else if preferences.showSectionDividers && !engine.isCollapsed {
+            } else if showsChevron && !engine.isCollapsed {
                 ChevronAppearance.configure(button, collapsed: false)
             } else { button.image = nil }
             button.setAccessibilityLabel(engine.isCollapsed ? L10n.showIcons : L10n.hideIcons)
@@ -234,7 +242,7 @@ final class MenuBarController: NSObject {
 
     private func observe(_ event: NSEvent) {
         if sharingTask != nil || event.cgEvent?.getIntegerValueField(.eventSourceUserData) == SharingIndicatorMover.eventTag { return }
-        if event.window?.level.rawValue == Int(CGWindowLevelForKey(.statusWindow)) ||
+        if (event.window?.level.rawValue == Int(CGWindowLevelForKey(.statusWindow)) && (showsChevron || editing)) ||
            event.window?.title == L10n.recoveryTitle { return }
         let point = NSEvent.mouseLocation
         guard MenuBarGeometry.screen(at: point) != nil else { return }
@@ -249,11 +257,14 @@ final class MenuBarController: NSObject {
     }
 
     private func refreshGeometry() {
+        // Permission can change while the app is running. Reconfigure both the
+        // native mirrors and collapsed recovery panels before publishing geometry.
+        if AXIsProcessTrusted() != state.accessibilityGranted { applyPreferences() }
         engine.synchronizeMirrorSpacing()
         geometryAt = now
         cachedStatusFrames = MenuBarOccupancy.statusItemFrames()
         cachedMenus.removeAll()
-        if AXIsProcessTrusted() {
+        if state.accessibilityGranted {
             for screen in NSScreen.screens {
                 if let menus = MenuBarGeometry.applicationMenuFrames(on: screen) {
                     cachedMenus[MenuBarGeometry.displayID(screen)] = menus
@@ -261,7 +272,6 @@ final class MenuBarController: NSObject {
             }
         }
         nativeMenuOpen = MenuBarOccupancy.hasOpenMenu()
-        state.accessibilityGranted = AXIsProcessTrusted()
     }
 
     private func isEmpty(_ point: CGPoint) -> Bool {
@@ -310,13 +320,13 @@ final class MenuBarController: NSObject {
                 wasCollapsedBeforeEditing = engine.isCollapsed
                 editing = true
                 recovery.stop()
-                engine.configure(showDividers: preferences.showSectionDividers,
+                engine.configure(showDividers: showsChevron,
                     alwaysHiddenEnabled: preferences.enableAlwaysHidden, editing: true)
                 engine.reveal(all: true)
                 updateButton()
             case .endEditing(let didDrag):
                 editing = false
-                engine.configure(showDividers: preferences.showSectionDividers,
+                engine.configure(showDividers: showsChevron,
                     alwaysHiddenEnabled: preferences.enableAlwaysHidden, editing: false)
                 if didDrag || wasCollapsedBeforeEditing { editingEndAt = now + 0.3 }
                 else { reveal() }
@@ -342,7 +352,7 @@ final class MenuBarController: NSObject {
 
     private func showContextMenu(at point: CGPoint) {
         let menu = NSMenu()
-        let settings = menu.addItem(withTitle: L10n.settings, action: #selector(showSettings), keyEquivalent: ",")
+        let settings = menu.addItem(withTitle: L10n.settings, action: #selector(showSettings), keyEquivalent: "")
         settings.target = self
         if preferences.enableAlwaysHidden {
             let all = menu.addItem(withTitle: L10n.temporaryShowAll, action: #selector(showAll), keyEquivalent: "")

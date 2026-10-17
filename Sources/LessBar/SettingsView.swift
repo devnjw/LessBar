@@ -4,11 +4,17 @@ struct SettingsView: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject var state: MenuBarState
     let supported: Bool
-    let toggle: () -> Void
-    var temporaryShow: () -> Void = {}
     var requestAccessibility: () -> Void = {}
 
-    @State private var selectedTab = 0
+    @State private var timingExpanded = false
+
+    private var timingExpansion: Binding<Bool> {
+        // Send one final height to SettingsWindowController; it animates the
+        // bottom edge without animating SwiftUI's intrinsic height in parallel.
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        return $timingExpanded.transaction(transaction)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,32 +23,48 @@ struct SettingsView: View {
                     .accessibilityHidden(true)
                 Text("LessBar").font(.system(size: 20, weight: .semibold))
                 Spacer()
-                Button(action: toggle) {
-                    Label(state.isCollapsed ? L10n.showIcons : L10n.hideIcons,
-                          systemImage: state.isCollapsed ? "chevron.left" : "chevron.right")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!supported)
-                .accessibilityLabel(state.isCollapsed ? L10n.showIcons : L10n.hideIcons)
             }
             .padding(.bottom, 15)
 
-            Picker(L10n.settingsTabs, selection: $selectedTab) {
-                Text(L10n.generalTab).tag(0)
-                Text(L10n.advancedTab).tag(1)
+            VStack(alignment: .leading, spacing: 10) {
+                MenuBarGuide(isCollapsed: state.isCollapsed,
+                    showsChevron: !preferences.showOnHover || !state.accessibilityGranted)
+                Text(L10n.dragInstruction)
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .pickerStyle(.segmented)
-            .padding(.bottom, 14)
+            .padding(.bottom, 20)
 
-            ScrollView {
-                if selectedTab == 0 {
-                    generalSettings
-                } else {
-                    advancedSettings
+            generalSettings
+
+            Divider().padding(.vertical, 14)
+            DisclosureGroup(isExpanded: timingExpansion) {
+                VStack(spacing: 14) {
+                    sliderRow(L10n.hoverDelay, value: $preferences.hoverDelay,
+                              range: 0...2, step: 0.1, format: L10n.secondsFormat)
+                        .disabled(!preferences.showOnHover)
+                    sliderRow(L10n.rehideDelay, value: $preferences.rehideDelay,
+                              range: 0...10, step: 0.1, format: L10n.secondsFormat)
+                        .disabled(!preferences.autoRehide)
                 }
-                Spacer(minLength: 1)
+                .padding(.top, 10)
+            } label: {
+                Text(L10n.timing)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { timingExpansion.wrappedValue.toggle() }
             }
-            .frame(maxHeight: 460)
+
+            if !state.accessibilityGranted {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.accessibilityNeeded).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(L10n.allowAccessibility, action: requestAccessibility)
+                        .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
+            }
 
             if !preferences.loginMessage.isEmpty {
                 Text(preferences.loginMessage).font(.caption).foregroundStyle(.secondary)
@@ -62,89 +84,41 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 440)
-        .frame(minHeight: 350)
+        .frame(width: 380)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear { preferences.refreshLoginStatus() }
     }
 
     private var generalSettings: some View {
         VStack(alignment: .leading, spacing: 14) {
-            settingRow(L10n.showOnClick, detail: L10n.showOnClickDetail,
-                       value: $preferences.showOnClick)
-            settingRow(L10n.showOnHover, detail: L10n.showOnHoverDetail,
-                       value: $preferences.showOnHover)
-            if preferences.showOnHover {
-                sliderRow(L10n.hoverDelay, value: $preferences.hoverDelay,
-                          range: 0...2, step: 0.1, format: L10n.secondsFormat)
-            }
-            if !state.accessibilityGranted {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.accessibilityNeeded).font(.system(size: 11)).foregroundStyle(.secondary)
-                    Button(action: requestAccessibility) {
-                        Label(L10n.allowAccessibility, systemImage: "lock.open")
-                    }
-                    .buttonStyle(.bordered)
-                }
-            }
-            Divider()
-            settingRow(L10n.autoRehide, detail: L10n.autoRehideDetail,
-                       value: $preferences.autoRehide)
-            if preferences.autoRehide {
-                Picker(L10n.rehideStrategy, selection: $preferences.rehideStrategy) {
-                    Text(L10n.afterExitStrategy).tag(RehideStrategy.afterExit)
-                    Text(L10n.timedStrategy).tag(RehideStrategy.timed)
-                }
-                .pickerStyle(.menu)
-                sliderRow(L10n.rehideDelay, value: $preferences.rehideDelay,
-                          range: 0...10, step: 0.1, format: L10n.secondsFormat)
-            }
-            Toggle(L10n.launchAtLogin, isOn: Binding(
+            toggleRow(L10n.launchAtLogin, value: Binding(
                 get: { preferences.launchAtLogin },
                 set: { preferences.setLaunchAtLogin($0) }
             ))
-            .toggleStyle(.switch)
-            .controlSize(.small)
-        }
-    }
-
-    private var advancedSettings: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            settingRow(L10n.showSectionDividers, detail: L10n.showSectionDividersDetail,
-                       value: $preferences.showSectionDividers)
-            settingRow(L10n.showAllOnCommandDrag, detail: L10n.showAllOnCommandDragDetail,
-                       value: $preferences.showAllOnCommandDrag)
-            settingRow(L10n.enableAlwaysHidden, detail: L10n.enableAlwaysHiddenDetail,
-                       value: $preferences.enableAlwaysHidden)
-            if preferences.enableAlwaysHidden {
-                sliderRow(L10n.temporaryShowDelay, value: $preferences.temporaryShowDelay,
-                          range: 1...60, step: 1, format: L10n.secondsFormat)
-                Button(action: temporaryShow) {
-                    Label(L10n.temporaryShowAll, systemImage: "eye")
+            toggleRow(L10n.showOnHover, value: $preferences.showOnHover)
+                .help(L10n.showOnHoverDetail)
+            VStack(alignment: .leading, spacing: 4) {
+                toggleRow(L10n.autoRehide, value: $preferences.autoRehide)
+                    .disabled(preferences.showOnHover)
+                    .help(preferences.showOnHover ? L10n.autoRehideRequiredForHover : L10n.autoRehideDetail)
+                if preferences.showOnHover {
+                    Text(L10n.autoRehideRequiredForHover)
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.bordered)
             }
-            settingRow(L10n.hideApplicationMenus, detail: L10n.hideApplicationMenusDetail,
-                       value: $preferences.hideApplicationMenus)
-            Divider()
-            Text(L10n.guideTitle).font(.system(size: 13, weight: .medium))
-            MenuBarGuide(isCollapsed: state.isCollapsed,
-                         showDivider: preferences.showSectionDividers)
-            Text(L10n.dragInstruction)
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func settingRow(_ title: String, detail: String, value: Binding<Bool>) -> some View {
-        Toggle(isOn: value) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium))
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    private func toggleRow(_ title: String, value: Binding<Bool>) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Toggle(title, isOn: value)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
         }
-        .toggleStyle(.switch)
-        .controlSize(.small)
     }
 
     private func sliderRow(_ title: String, value: Binding<Double>, range: ClosedRange<Double>,
@@ -167,42 +141,44 @@ struct SettingsView: View {
 /// A noninteractive usage example; real actions are provided by labeled controls.
 private struct MenuBarGuide: View {
     let isCollapsed: Bool
-    let showDivider: Bool
+    let showsChevron: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 9) {
-            HStack(spacing: 0) {
-                HStack(spacing: 15) {
-                    ForEach(0..<3) { _ in
-                        RoundedRectangle(cornerRadius: 3).fill(.secondary.opacity(0.6))
-                            .frame(width: 13, height: 13)
-                    }
+            HStack(spacing: 10) {
+                HStack(spacing: 12) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                    Image(systemName: "cloud.fill")
+                    Image(systemName: "headphones")
                 }
-                .opacity(isCollapsed ? 0.12 : 1)
-                .frame(maxWidth: .infinity)
+                .font(.system(size: 14, weight: .medium))
+                .opacity(isCollapsed ? 0.25 : 0.45)
+                .frame(width: 88, alignment: .trailing)
 
-                if showDivider {
-                    Image(systemName: isCollapsed ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 12, weight: .semibold)).frame(width: 32)
-                } else {
-                    Spacer().frame(width: 1)
-                }
+                Image(systemName: isCollapsed ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    // Center the visible glyph, including its directional side bearing.
+                    .offset(x: isCollapsed ? 1 : -1)
+                    .frame(width: 18)
+                    .opacity(showsChevron ? 1 : 0)
 
-                HStack(spacing: 15) {
+                HStack(spacing: 12) {
                     Image(systemName: "wifi")
+                    Image(systemName: "speaker.wave.2.fill")
                     Image(systemName: "battery.100percent")
                 }
-                .font(.system(size: 14)).frame(maxWidth: .infinity)
+                .font(.system(size: 14)).frame(width: 88, alignment: .leading)
             }
+            .frame(maxWidth: .infinity)
             .frame(height: 44)
             .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 9))
             .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.primary.opacity(0.06)))
 
-            HStack(spacing: 0) {
-                Text(L10n.hiddenIcons).frame(maxWidth: .infinity)
-                Color.clear.frame(width: showDivider ? 32 : 1, height: 1)
-                Text(L10n.visibleIcons).frame(maxWidth: .infinity)
+            HStack(spacing: 10) {
+                Text(L10n.hiddenIcons).frame(width: 88)
+                Color.clear.frame(width: 18, height: 1)
+                Text(L10n.visibleIcons).frame(width: 88)
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
         }

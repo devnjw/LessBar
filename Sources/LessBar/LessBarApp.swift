@@ -17,7 +17,7 @@ struct LessBarApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let preferences = Preferences()
     private var menuBar: MenuBarController?
-    private var settingsWindow: NSWindow?
+    private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         let appItem = NSMenuItem(title: "LessBar", action: nil, keyEquivalent: "")
         let actions = NSMenu(title: "LessBar")
-        let settings = actions.addItem(withTitle: L10n.settings, action: #selector(openSettings), keyEquivalent: ",")
+        let settings = actions.addItem(withTitle: L10n.settings, action: #selector(openSettings), keyEquivalent: "")
         settings.target = self
         let quit = actions.addItem(withTitle: L10n.quit, action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -53,25 +53,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettings() {
         guard let menuBar else { return }
+        menuBar.setSettingsOpen(true)
         menuBar.retrySharingPlacement()
-        menuBar.reveal()
+        if preferences.enableAlwaysHidden {
+            menuBar.temporarilyShowAll()
+        } else {
+            menuBar.reveal()
+        }
         preferences.refreshLoginStatus()
         if settingsWindow == nil {
             let view = SettingsView(preferences: preferences, state: menuBar.state,
-                supported: menuBar.isSupported, toggle: { [weak menuBar] in menuBar?.toggleVisibility() },
-                temporaryShow: { [weak menuBar] in menuBar?.temporarilyShowAll() },
+                supported: menuBar.isSupported,
                 requestAccessibility: { [weak menuBar] in menuBar?.requestAccessibility() })
-            let window = NSWindow(contentViewController: NSHostingController(rootView: view))
-            window.title = L10n.settingsTitle
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.styleMask = [.titled, .closable, .miniaturizable]
-            window.isReleasedWhenClosed = false
-            window.center()
-            settingsWindow = window
+            settingsWindow = SettingsWindowController(rootView: view, onClose: { [weak menuBar] in
+                menuBar?.setSettingsOpen(false)
+            })
         }
         NSApp.activate(ignoringOtherApps: true)
-        settingsWindow?.makeKeyAndOrderFront(nil)
+        settingsWindow?.showWindow(nil)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
