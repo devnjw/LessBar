@@ -109,6 +109,15 @@ final class InteractionPolicyTests: XCTestCase {
         XCTAssertTrue(policy.step(.init(now: 3, menuDisplayID: 1), configuration: config).isEmpty)
     }
 
+    func testLegacyRecoveryStaysExpandedUntilSettingsClose() {
+        var policy = InteractionPolicy()
+        let config = InteractionPolicy.Configuration(temporaryShowDelay: 15)
+        policy.didReveal(now: 0, temporaryAll: true, temporaryDelay: config.temporaryShowDelay)
+        XCTAssertTrue(policy.step(.init(now: 16, menuDisplayID: nil, settingsPinned: true), configuration: config).isEmpty)
+        XCTAssertTrue(policy.allVisible)
+        XCTAssertEqual(policy.step(.init(now: 17, menuDisplayID: nil), configuration: config), [.endTemporaryAll])
+    }
+
     func testZeroDelayRehidesImmediatelyOnExit() {
         var policy = InteractionPolicy()
         let config = InteractionPolicy.Configuration(rehideDelay: 0)

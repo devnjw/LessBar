@@ -76,6 +76,24 @@ final class RecoveryHandoffTests: XCTestCase {
         XCTAssertTrue(recovery.visibleFrames.isEmpty)
     }
 
+    @MainActor func testHoverPanelsStayHiddenAndReturnForPermissionFallback() {
+        _ = NSApplication.shared
+        let recovery = recovery(occupiedFrames: { [] })
+        defer { recovery.stop() }
+        let anchors = anchors()
+        XCTAssertTrue(recovery.prepare(anchors: anchors, showControls: false))
+        XCTAssertTrue(recovery.handoffToCollapsed { true })
+        recovery.startMonitoring()
+        recovery.refreshVisibility()
+        XCTAssertTrue(recovery.visibleFrames.isEmpty)
+        XCTAssertEqual(Set(recovery.displayIDs), Set(anchors.map(\.displayID)))
+        // Reconfiguration after losing permission must restore every display's
+        // control, rather than retaining an invisible collapsed recovery session.
+        XCTAssertTrue(recovery.prepare(anchors: anchors, showControls: true))
+        recovery.startMonitoring()
+        XCTAssertEqual(recovery.visibleFrames.count, anchors.count)
+    }
+
     @MainActor func testHiddenMenuBarKeepsCollapseAndReturnsWhenShown() throws {
         _ = NSApplication.shared
         let anchors = anchors()

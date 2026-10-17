@@ -8,42 +8,117 @@ final class PreferencesMigrationTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let initial = Preferences(defaults: defaults)
-        XCTAssertTrue(initial.showOnClick)
-        XCTAssertTrue(initial.showOnHover)
+        XCTAssertFalse(initial.showOnClick)
+        XCTAssertFalse(initial.showOnHover)
         XCTAssertEqual(initial.hoverDelay, 0.2, accuracy: 0.0001)
         XCTAssertTrue(initial.autoRehide)
         XCTAssertEqual(initial.rehideStrategy, .afterExit)
         XCTAssertEqual(initial.rehideDelay, 3)
-        XCTAssertFalse(initial.showSectionDividers)
+        XCTAssertTrue(initial.showsChevron(accessibilityGranted: true))
         XCTAssertTrue(initial.showAllOnCommandDrag)
         XCTAssertFalse(initial.enableAlwaysHidden)
         XCTAssertEqual(initial.temporaryShowDelay, 15)
         XCTAssertFalse(initial.hideApplicationMenus)
 
-        initial.showOnClick = false
-        initial.showOnHover = false
-        initial.hoverDelay = 0.8
         initial.autoRehide = false
-        initial.rehideStrategy = .timed
+        initial.showOnHover = true
+        initial.hoverDelay = 0.8
         initial.rehideDelay = 9
-        initial.showSectionDividers = true
-        initial.showAllOnCommandDrag = false
-        initial.enableAlwaysHidden = true
-        initial.temporaryShowDelay = 22
-        initial.hideApplicationMenus = true
 
         let restored = Preferences(defaults: defaults)
         XCTAssertFalse(restored.showOnClick)
-        XCTAssertFalse(restored.showOnHover)
+        XCTAssertTrue(restored.showOnHover)
         XCTAssertEqual(restored.hoverDelay, 0.8, accuracy: 0.0001)
-        XCTAssertFalse(restored.autoRehide)
-        XCTAssertEqual(restored.rehideStrategy, .timed)
+        XCTAssertTrue(restored.autoRehide)
+        XCTAssertEqual(restored.rehideStrategy, .afterExit)
         XCTAssertEqual(restored.rehideDelay, 9)
-        XCTAssertTrue(restored.showSectionDividers)
-        XCTAssertFalse(restored.showAllOnCommandDrag)
-        XCTAssertTrue(restored.enableAlwaysHidden)
-        XCTAssertEqual(restored.temporaryShowDelay, 22)
-        XCTAssertTrue(restored.hideApplicationMenus)
+        XCTAssertFalse(restored.showsChevron(accessibilityGranted: true))
+        XCTAssertTrue(restored.showAllOnCommandDrag)
+        XCTAssertFalse(restored.enableAlwaysHidden)
+        XCTAssertEqual(restored.temporaryShowDelay, 15)
+        XCTAssertFalse(restored.hideApplicationMenus)
+    }
+
+    @MainActor func testUpgradeKeepsUserChoicesAndLegacyHiddenSectionRecoverable() throws {
+        let suite = "LessBarTests.preferences.upgrade.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "lessbar.showOnHover")
+        defaults.set(false, forKey: "lessbar.autoRehide")
+        defaults.set(0.7, forKey: "lessbar.hoverDelay")
+        defaults.set(5.2, forKey: "lessbar.rehideDelay")
+        defaults.set(true, forKey: "lessbar.enableAlwaysHidden")
+        defaults.set(22.0, forKey: "lessbar.temporaryShowDelay")
+        defaults.set(160.0, forKey: "NSStatusItem Preferred Position LessBar.AlwaysHidden")
+        defaults.set(true, forKey: "lessbar.showOnClick")
+        defaults.set("timed", forKey: "lessbar.rehideStrategy")
+        defaults.set(false, forKey: "lessbar.showSectionDividers")
+        defaults.set(false, forKey: "lessbar.showAllOnCommandDrag")
+        defaults.set(true, forKey: "lessbar.hideApplicationMenus")
+
+        let upgraded = Preferences(defaults: defaults)
+        XCTAssertTrue(upgraded.showOnHover)
+        XCTAssertTrue(upgraded.autoRehide)
+        XCTAssertFalse(defaults.bool(forKey: "lessbar.autoRehide"))
+        XCTAssertEqual(upgraded.hoverDelay, 0.7, accuracy: 0.0001)
+        XCTAssertEqual(upgraded.rehideDelay, 5.2, accuracy: 0.0001)
+        XCTAssertTrue(upgraded.enableAlwaysHidden)
+        XCTAssertEqual(upgraded.temporaryShowDelay, 22)
+        XCTAssertEqual(defaults.double(forKey: "NSStatusItem Preferred Position LessBar.AlwaysHidden"), 160)
+        XCTAssertFalse(upgraded.showOnClick)
+        XCTAssertEqual(upgraded.rehideStrategy, .afterExit)
+        XCTAssertFalse(upgraded.showsChevron(accessibilityGranted: true))
+        XCTAssertTrue(upgraded.showsChevron(accessibilityGranted: false))
+        XCTAssertTrue(upgraded.showAllOnCommandDrag)
+        XCTAssertFalse(upgraded.hideApplicationMenus)
+        // Retired values are left intact for rollback, but cannot hide the
+        // permission fallback, disable rearranging, or activate another app's menus.
+        XCTAssertTrue(defaults.bool(forKey: "lessbar.hideApplicationMenus"))
+        XCTAssertEqual(defaults.string(forKey: "lessbar.rehideStrategy"), "timed")
+    }
+
+    @MainActor func testChevronFollowsHoverAndLivePermissionChanges() throws {
+        let suite = "LessBarTests.preferences.chevron.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
+        XCTAssertTrue(preferences.showsChevron(accessibilityGranted: true))
+        preferences.showOnHover = true
+        XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
+        XCTAssertFalse(preferences.showsChevron(accessibilityGranted: true))
+        // Revocation must restore the control without clearing the user's choice.
+        XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
+        XCTAssertTrue(preferences.showOnHover)
+        preferences.showOnHover = false
+        XCTAssertTrue(preferences.showsChevron(accessibilityGranted: true))
+    }
+
+    @MainActor func testHoverRequiresAutomaticHidingAndRestoresChoiceAcrossRelaunch() throws {
+        for previousChoice in [false, true] {
+            let suite = "LessBarTests.preferences.hoverRehide.\(UUID())"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let preferences = Preferences(defaults: defaults)
+            preferences.autoRehide = previousChoice
+            preferences.rehideDelay = 3.4
+
+            preferences.showOnHover = true
+            XCTAssertTrue(preferences.autoRehide)
+            // Even a stale binding cannot disable automatic hiding in hover mode.
+            preferences.autoRehide = false
+            XCTAssertTrue(preferences.autoRehide)
+            XCTAssertEqual(defaults.bool(forKey: "lessbar.autoRehide"), previousChoice)
+
+            preferences.showOnHover = false
+            XCTAssertEqual(preferences.autoRehide, previousChoice)
+            preferences.showOnHover = true
+            let relaunched = Preferences(defaults: defaults)
+            XCTAssertTrue(relaunched.autoRehide)
+            relaunched.showOnHover = false
+            XCTAssertEqual(relaunched.autoRehide, previousChoice)
+            XCTAssertEqual(relaunched.rehideDelay, 3.4, accuracy: 0.0001)
+        }
     }
 
     @MainActor func testDelayPreferencesAreClampedToControlRanges() throws {
