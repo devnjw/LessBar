@@ -32,7 +32,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertTrue(restored.autoRehide)
         XCTAssertEqual(restored.rehideStrategy, .afterExit)
         XCTAssertEqual(restored.rehideDelay, 9)
-        XCTAssertFalse(restored.showsChevron(accessibilityGranted: true))
+        XCTAssertTrue(restored.showsChevron(accessibilityGranted: true))
         XCTAssertTrue(restored.showAllOnCommandDrag)
         XCTAssertFalse(restored.enableAlwaysHidden)
         XCTAssertEqual(restored.temporaryShowDelay, 15)
@@ -77,7 +77,7 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "lessbar.rehideStrategy"), "timed")
     }
 
-    @MainActor func testChevronFollowsHoverAndLivePermissionChanges() throws {
+    @MainActor func testChevronIsIndependentAndReturnsWhenPermissionIsLost() throws {
         let suite = "LessBarTests.preferences.chevron.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -85,11 +85,14 @@ final class PreferencesMigrationTests: XCTestCase {
         XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
         XCTAssertTrue(preferences.showsChevron(accessibilityGranted: true))
         preferences.showOnHover = true
+        XCTAssertTrue(preferences.showsChevron(accessibilityGranted: true))
+        preferences.showChevron = false
         XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
         XCTAssertFalse(preferences.showsChevron(accessibilityGranted: true))
         // Revocation must restore the control without clearing the user's choice.
         XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
         XCTAssertTrue(preferences.showOnHover)
+        preferences.showChevron = true
         preferences.showOnHover = false
         XCTAssertTrue(preferences.showsChevron(accessibilityGranted: true))
     }
@@ -118,6 +121,61 @@ final class PreferencesMigrationTests: XCTestCase {
             relaunched.showOnHover = false
             XCTAssertEqual(relaunched.autoRehide, previousChoice)
             XCTAssertEqual(relaunched.rehideDelay, 3.4, accuracy: 0.0001)
+        }
+    }
+
+    @MainActor func testHiddenChevronKeepsARevealMethodAndRestoresManualHideChoice() throws {
+        let suite = "LessBarTests.preferences.revealMethods.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = Preferences(defaults: defaults)
+        preferences.autoRehide = false
+        preferences.showChevron = false
+        XCTAssertTrue(preferences.showOnClick) // Safe fallback when both were off.
+        XCTAssertFalse(preferences.showOnHover)
+        XCTAssertTrue(preferences.autoRehide)
+        preferences.showOnClick = false
+        XCTAssertTrue(preferences.showOnClick) // Cannot remove the final method.
+        preferences.showOnHover = true
+        preferences.showOnClick = false
+        XCTAssertTrue(preferences.showOnHover)
+        XCTAssertFalse(preferences.showOnClick)
+        preferences.showOnHover = false
+        XCTAssertTrue(preferences.showOnHover)
+        preferences.showOnClick = true
+        preferences.showOnHover = false
+        let relaunched = Preferences(defaults: defaults)
+        XCTAssertFalse(relaunched.showChevron)
+        XCTAssertTrue(relaunched.showOnClick)
+        XCTAssertFalse(relaunched.showOnHover)
+        relaunched.showChevron = true
+        relaunched.showOnClick = false
+        XCTAssertFalse(relaunched.showOnHover)
+        XCTAssertFalse(relaunched.showOnClick)
+        XCTAssertFalse(relaunched.autoRehide)
+    }
+
+    @MainActor func testAllStoredRevealCombinationsRemainReachableAfterRelaunch() throws {
+        for chevron in [false, true] {
+            for hover in [false, true] {
+                for click in [false, true] {
+                    let suite = "LessBarTests.preferences.combinations.\(UUID())"
+                    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+                    defer { defaults.removePersistentDomain(forName: suite) }
+                    defaults.set(chevron, forKey: "lessbar.showChevron")
+                    defaults.set(hover, forKey: "lessbar.showOnHover")
+                    defaults.set(click, forKey: "lessbar.emptySpaceClick")
+                    let preferences = Preferences(defaults: defaults)
+                    XCTAssertEqual(preferences.showChevron, chevron)
+                    XCTAssertEqual(preferences.showOnHover, hover)
+                    XCTAssertEqual(preferences.showOnClick, click || (!chevron && !hover))
+                    XCTAssertTrue(preferences.showChevron || preferences.showOnHover || preferences.showOnClick)
+                    XCTAssertTrue(preferences.showsChevron(accessibilityGranted: false))
+                    let restored = Preferences(defaults: defaults)
+                    XCTAssertEqual(restored.showOnClick, preferences.showOnClick)
+                    XCTAssertEqual(restored.showChevron, preferences.showChevron)
+                }
+            }
         }
     }
 

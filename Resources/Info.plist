@@ -3,8 +3,8 @@
 <plist version="1.0"><dict>
     <key>CFBundleExecutable</key><string>LessBar</string>
     <key>CFBundleIdentifier</key><string>io.github.devnjw.LessBar</string>
-    <key>CFBundleName</key><string>LessBar</string>
-    <key>CFBundleDisplayName</key><string>LessBar</string>
+    <key>CFBundleName</key><string>Less Bar</string>
+    <key>CFBundleDisplayName</key><string>Less Bar</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.2.5</string>

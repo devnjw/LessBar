@@ -14,7 +14,7 @@ if [[ "$MODE" == --notarize ]]; then
 fi
 
 bash scripts/build-app.sh --universal
-APP_PATH="$PWD/dist/LessBar.app"
+APP_PATH="$PWD/dist/Less Bar.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
 RELEASE_DIR="$PWD/dist/release"
 mkdir -p "$RELEASE_DIR"
@@ -41,15 +41,15 @@ if [[ "$MODE" == --notarize ]]; then
 fi
 
 mkdir "$STAGING_DIR/dmg"
-ditto "$APP_PATH" "$STAGING_DIR/dmg/LessBar.app"
+ditto "$APP_PATH" "$STAGING_DIR/dmg/Less Bar.app"
 ln -s /Applications "$STAGING_DIR/dmg/Applications"
 cp LICENSE "$STAGING_DIR/dmg/LICENSE.txt"
 cp docs/INSTALL.txt "$STAGING_DIR/dmg/Install.txt"
 SUFFIX=""
 if [[ "$MODE" == --preview ]]; then SUFFIX="-unnotarized"; fi
-DMG="$RELEASE_DIR/LessBar-$VERSION$SUFFIX-universal.dmg"
-ZIP="$RELEASE_DIR/LessBar-$VERSION$SUFFIX-universal.zip"
-hdiutil create -volname LessBar -srcfolder "$STAGING_DIR/dmg" -format UDZO -ov "$DMG"
+DMG="$RELEASE_DIR/Less-Bar-$VERSION$SUFFIX-universal.dmg"
+ZIP="$RELEASE_DIR/Less-Bar-$VERSION$SUFFIX-universal.zip"
+hdiutil create -volname "Less Bar" -srcfolder "$STAGING_DIR/dmg" -format UDZO -ov "$DMG"
 codesign --force --timestamp --sign "$SIGNING_IDENTITY" "$DMG"
 if [[ "$MODE" == --notarize ]]; then
   notarize "$DMG" "$RELEASE_DIR/dmg-notarization.plist"

@@ -1,4 +1,4 @@
-# Releasing LessBar
+# Releasing Less Bar
 
 Release artifacts are built locally with a Developer ID Application certificate. CI only produces ad-hoc-signed development artifacts, never a public release. Signing identities and credentials are not stored in the repository.
 
@@ -37,6 +37,6 @@ If Apple's service times out, inspect the submission ID in the local log with `x
 
 Use the tested commit, create its version tag, and upload only the DMG, ZIP and checksums to a draft GitHub release. Verify the asset list, checksums, signing/notarization status and support notes before publishing. Early versions should be marked as pre-releases. Do not upload certificates, keychain profiles, intermediate logs or development artifacts as a notarized release.
 
-The installation flow is: download DMG → drag to Applications → open LessBar. Test this from a copy outside the source checkout. Confirm `spctl --assess --type execute --verbose /path/to/LessBar.app` reports acceptance for the notarized build. Also verify `xcrun stapler validate` on both the app and DMG.
+The installation flow is: download DMG → drag to Applications → open Less Bar. Test this from a copy outside the source checkout. Confirm `spctl --assess --type execute --verbose "/path/to/Less Bar.app"` reports acceptance for the notarized build. Also verify `xcrun stapler validate` on both the app and DMG.
 
-There is no automatic updater. Users quit the old app before replacing it. Prototype users moving from `local.tidybar.app` must re-enable Launch at Login for the public bundle ID.
+There is no automatic updater. Users quit the old app before replacing it. For the display-name change, replace an older `LessBar.app` with `Less Bar.app` rather than keeping both; the bundle identity stays the same. Prototype users moving from `local.tidybar.app` must re-enable Launch at Login for the public bundle ID.

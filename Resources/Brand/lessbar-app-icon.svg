@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="LessBar app icon">
-  <title>LessBar app icon</title>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Less Bar app icon">
+  <title>Less Bar app icon</title>
   <rect x="48" y="48" width="928" height="928" rx="210" fill="#171a1f"/>
   <g transform="translate(112 312) scale(3.125)" fill="#fff"><rect x="20" y="40" width="144" height="48" rx="24"/><circle cx="212" cy="64" r="24"/></g>
 </svg>

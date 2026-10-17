@@ -13,7 +13,7 @@ swift build "${BUILD_ARGS[@]}"
 BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 STAGING_DIR="$(mktemp -d "$PWD/.build/app-stage.XXXXXX")"
 trap 'rm -rf "$STAGING_DIR"' EXIT
-APP_PATH="$STAGING_DIR/LessBar.app"
+APP_PATH="$STAGING_DIR/Less Bar.app"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 cp "$BIN_DIR/LessBar" "$APP_PATH/Contents/MacOS/LessBar"
 cp Resources/AppIcon.icns "$APP_PATH/Contents/Resources/"
@@ -34,6 +34,6 @@ if [[ "${1:-}" == --universal ]]; then
 fi
 mkdir -p dist
 # Replace only our generated bundle after validation succeeds.
-rm -rf dist/LessBar.app
-mv "$APP_PATH" dist/LessBar.app
-echo "Built: $PWD/dist/LessBar.app"
+rm -rf "dist/Less Bar.app" dist/LessBar.app
+mv "$APP_PATH" "dist/Less Bar.app"
+echo "Built: $PWD/dist/Less Bar.app"

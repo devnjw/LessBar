@@ -1,6 +1,6 @@
 # Architecture
 
-LessBar uses Swift, AppKit and SwiftUI with no third-party dependencies.
+Less Bar uses Swift, AppKit and SwiftUI with no third-party dependencies.
 
 | Component | Responsibility |
 | --- | --- |
@@ -28,7 +28,7 @@ Recovery panels follow each display's actual system menu bar. A 100 ms visibilit
 
 The recovery controller owns its safety, retry and visibility timers. Revealing invalidates them, clears the session and removes the panel. Delayed clicks are checked against panel identity; cancelled retry callbacks are checked against timer identity. Recovery always reveals rather than toggles, preventing stale callbacks from collapsing a new session.
 
-The engine is the source of truth for the published state. Native controls and hover use the same transition path. Settings and native menus have no show/hide action; only Quit has an app shortcut (⌘Q). Reopening LessBar remains the recovery route. The recovery timers only run while collapsed. The input coordinator samples pointer/modifier state every 50 ms and refreshes geometry every 200 ms; it never observes typed key content.
+The engine is the source of truth for the published state. Native controls and hover use the same transition path. Settings and native menus have no show/hide action; only Quit has an app shortcut (⌘Q). Reopening Less Bar remains the recovery route. The recovery timers only run while collapsed. The input coordinator samples pointer/modifier state every 50 ms and refreshes geometry every 200 ms; it never observes typed key content.
 
 ## Shared multi-display interaction
 
@@ -36,15 +36,21 @@ The engine is the source of truth for the published state. Native controls and h
 
 `LengthMenuBarEngine` retains native boundaries and preserves their autosaved positions. Native content-width constraints and padding are synchronized for every retained mirrored window; setting NSStatusItem.length alone changes only the active display on the tested macOS 26 build. Invisible expanded boundaries use a one-point window. Native status windows are tracked through AppKit rather than owner PID, because Window Server reports them under Control Center. External collision checks exclude native window IDs or an exact matching frame.
 
-`RecoveryController` creates one collision-checked panel per display and refuses partial display coverage. The chevron and recovery panels are hidden only when hover is enabled with Accessibility permission. Permission changes reconfigure native mirrors and collapsed recovery panels at the next geometry refresh. Visible panels still follow each display's system menu bar visibility. Display changes cancel stale work, reveal while layout settles, then restore the shared collapsed state. Reopening settings also reveals the icons for recovery.
+`RecoveryController` creates one collision-checked panel per display and refuses partial display coverage. The chevron and recovery panels are hidden only when Show Chevron is off with Accessibility permission. Permission changes reconfigure native mirrors and collapsed recovery panels at the next geometry refresh. Visible panels still follow each display's system menu bar visibility. Display changes cancel stale work, reveal while layout settles, then restore the shared collapsed state. Reopening settings also reveals the icons for recovery.
 
-The settings view exposes three switches and a collapsed Timing group with two delays. New installations default to click-the-chevron interaction, with hover off and automatic rehide on. Preferences makes automatic rehide effective whenever hover is on; its switch is on and disabled with an explanation, while the hide delay remains adjustable. The independent automatic-hide choice stays persisted and is restored when hover is turned off, including after relaunch. Rehide always waits for pointer exit. Empty-space click reveal and application-menu hiding are disabled, and Command editing stays available regardless of retired preference values. Existing hover, automatic-hide and delay choices are retained. Hover mode retains native right-click menus over empty menu bar space, native keyboard navigation and reopen recovery. The native boundary stays registered at its saved position with a one-point expanded window, and Command editing temporarily shows it.
+Preferences publishes the chevron/hover/click combination atomically. Chevron visibility is independent of the two empty-space reveal methods. With the chevron hidden, disabling the final method is rejected; hiding it while both methods are off enables Click. On first upgrade, the prior hover choice determines the initial chevron appearance. A separate click key avoids resurrecting retired prototype values. Permission loss still restores visible native and recovery controls.
+
+Hover or a hidden chevron makes automatic rehide effective without overwriting the independent persisted choice. Conditional, keyboard-accessible info buttons explain locked controls in popovers without adding permanent caption rows. The empty-space group uses short labels while retaining full accessibility names. Rehide waits for pointer exit; Command editing stays available and application-menu hiding stays disabled. Native right-click menus, keyboard navigation and reopen recovery remain available. The native boundary retains its saved position with a one-point expanded window when hidden.
+
+How to Use owns a self-contained, fixed-size SwiftUI animation of icon placement and each enabled empty-space reveal method (or chevron clicks when both are off). It is inserted only while expanded. A 30 Hz SwiftUI timeline samples deterministic loops with identical resting states on both sides of each seam. Removing the disclosure stops its timeline; closing or minimizing Settings pauses it. Reduce Motion pauses the timeline and displays static illustrations. Placement includes Command-drag left, chevron collapse/expand, and Command-drag back. No tutorial action reaches the menu bar engine.
 
 An already-enabled always-hidden section retains its boundary placement and temporary-reveal context-menu action. Reopening settings temporarily reveals that section as well; expiry waits until settings, menus and drags are closed, then restores the previous normal collapsed state. New installations do not create the secondary section.
 
-The entire Timing title row is clickable while the native disclosure retains keyboard and accessibility support. Timing sends its final layout height to `SettingsWindowController`, which owns sizing without intrinsic window constraints. Its hosting viewport reserves at least a screen's height even while collapsed, so SwiftUI never has to recenter overflowing content before reporting an expansion. Content stays pinned to the top and clipped at the bottom while the window height eases to its target over 220 ms. Reversing a transition starts from the current height, and Reduce Motion uses an immediate resize.
+Advanced, Language and How to Use sit below the two basic settings with identical row spacing. A shared SettingsPresentation object lets context-menu and app-menu actions expand How to Use in the existing settings window, including before its first presentation and after it closes. Advanced groups reveal controls, automatic hiding and non-collapsible Timing sliders. A transition of Show Arrow to off opens Advanced, without preventing manual collapse or opening it on initial load. A shared DisclosureGroupStyle uses one native button for each entire header, including the arrow-label gap and trailing space. The button reports expanded/collapsed state and retains keyboard access; disclosure content is outside its hit area. Each disclosure sends its final layout height to `SettingsWindowController`, which owns sizing without intrinsic window constraints. Its hosting viewport reserves at least a screen's height even while collapsed, so SwiftUI never has to recenter overflowing content before reporting an expansion. Content stays pinned to the top and clipped at the bottom while the window height eases to its target over 220 ms. Reversing a transition starts from the current height, and Reduce Motion uses an immediate resize.
 
 Opening Settings promotes the app to `.regular` before revealing icons and presenting the window. `ApplicationMenuController` retains this policy while Settings is open, including when minimized or inactive, so menu restoration cannot remove the app from Dock or ⌘Tab. The window close delegate returns to `.accessory`; reopening a minimized window deminiaturizes it. Closing Settings never terminates the menu bar engine.
+
+The app language preference supports system, English and Korean through a native radio-group picker in a collapsed Language disclosure. `L10n` resolves the selected localization bundle at lookup time without modifying AppleLanguages. Settings observes the preference; its change callback refreshes native menu/window titles, recovery labels and existing feedback. Usage illustrations are recreated in the selected language.
 
 ## System constraints
 
@@ -54,7 +60,7 @@ With Accessibility permission, sharing-control placement reads only Control Cent
 
 Reordering runs only while expanded and with no mouse button, modifier or menu held. A pending close waits for this bounded handoff; the normal interaction policy is suspended during generated Command-drag events. User input interrupts the operation and allows a later retry after a short delay. The result is checked against fresh indicator/boundary geometry, not inferred from event delivery. Failure is reported in settings and is not retried continuously. Reopening settings permits another attempt. Display/Space changes and shutdown cancel the operation and release the generated drag.
 
-The public bundle ID is `io.github.devnjw.LessBar`. The existing `TidyBar.Toggle` autosave key is retained to preserve placement. Only known setup/placement keys migrate from `local.tidybar.app`, once, without overwriting new choices. Login registration is not migrated between bundle identities.
+The display name and distributed bundle are `Less Bar` and `Less Bar.app`. The Swift module/executable remain `LessBar`, and preference/placement namespaces stay stable across the rename. The public bundle ID is `io.github.devnjw.LessBar`. The existing `TidyBar.Toggle` autosave key is retained to preserve placement. Only known setup/placement keys migrate from `local.tidybar.app`, once, without overwriting new choices. Login registration is not migrated between bundle identities.
 
 ## Verification
 
@@ -63,7 +69,7 @@ Run `swift test` for geometry, transient/permanent recovery failures, input hand
 - Repeated hide/show from the native chevron and hover; UI state stays synchronized.
 - Sharing indicator visible before and after collapse; no overlapping recovery button.
 - Recovery button receives the first click without window activation.
-- Native right-click Settings/Quit menu, no custom spacing or separator.
+- Native right-click Settings/How to Use/Quit menu, no custom spacing or separator.
 - Display changes, notches, full-screen Spaces and multiple displays.
 - Launch at Login from an installed copy, restart, quit and update.
 - English/Korean resources from the packaged app, outside the source directory.

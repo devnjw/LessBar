@@ -23,6 +23,7 @@ final class MenuBarController: NSObject {
     private let recovery = RecoveryController()
     private let applicationMenus = ApplicationMenuController()
     private let onSettings: () -> Void
+    private let onHowToUse: () -> Void
     private var preferenceObserver: AnyCancellable?
     private var interactionTimer: Timer?
     private var globalMonitor: Any?
@@ -49,9 +50,10 @@ final class MenuBarController: NSObject {
     private var collapseAfterSharing = false
     private let sharingLog = Logger(subsystem: "io.github.devnjw.LessBar", category: "sharing")
 
-    init(preferences: Preferences, onSettings: @escaping () -> Void) {
+    init(preferences: Preferences, onSettings: @escaping () -> Void, onHowToUse: @escaping () -> Void) {
         self.preferences = preferences
         self.onSettings = onSettings
+        self.onHowToUse = onHowToUse
         let item = NSStatusBar.system.statusItem(withLength: LayoutSafety.controlWidth)
         item.autosaveName = "TidyBar.Toggle"
         item.isVisible = true
@@ -194,6 +196,20 @@ final class MenuBarController: NSObject {
 
     func requestAccessibility() {
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+        applyPreferences()
+    }
+
+    func refreshLanguage(from previous: AppLanguage) {
+        for key in ["boundaryOrder", "positionRecovery"] {
+            if state.feedback == L10n.text(key, language: previous) {
+                state.feedback = L10n.text(key)
+            }
+        }
+        if state.sharingFeedback == L10n.text("sharingPlacementFailed", language: previous) {
+            state.sharingFeedback = L10n.sharingPlacementFailed
+        }
+        // Existing preference observation also rebuilds recovery labels; refresh
+        // immediately so title-based event routing uses the new language too.
         applyPreferences()
     }
 
@@ -354,6 +370,8 @@ final class MenuBarController: NSObject {
         let menu = NSMenu()
         let settings = menu.addItem(withTitle: L10n.settings, action: #selector(showSettings), keyEquivalent: "")
         settings.target = self
+        let help = menu.addItem(withTitle: L10n.howToUse, action: #selector(showHowToUse), keyEquivalent: "")
+        help.target = self
         if preferences.enableAlwaysHidden {
             let all = menu.addItem(withTitle: L10n.temporaryShowAll, action: #selector(showAll), keyEquivalent: "")
             all.target = self
@@ -460,6 +478,7 @@ final class MenuBarController: NSObject {
         recovery.refreshVisibility()
     }
     @objc private func showSettings() { onSettings() }
+    @objc private func showHowToUse() { onHowToUse() }
     @objc private func showAll() { temporarilyShowAll() }
     @objc private func quitApp() { NSApp.terminate(nil) }
 }
