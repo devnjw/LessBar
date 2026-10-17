@@ -195,7 +195,7 @@ struct SettingsView: View {
                 Text(format(value.wrappedValue)).font(.system(size: 11)).foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            Slider(value: value, in: range, step: step)
+            TimingSlider(value: value, range: range, step: step, title: title, formattedValue: format(value.wrappedValue))
                 .accessibilityLabel(title)
                 .accessibilityValue(format(value.wrappedValue))
         }

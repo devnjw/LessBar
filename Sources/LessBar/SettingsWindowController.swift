@@ -6,6 +6,8 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let onClose: () -> Void
     private let hosting = NSHostingController(rootView: AnyView(EmptyView()))
+    private let scrollView = NSScrollView()
+    private let scrollDocument = SettingsContentContainer()
     private var contentSize = NSSize.zero
     private var resizeTimer: Timer?
     private var resizeVersion = 0
@@ -43,8 +45,23 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         container.autoresizesSubviews = false
         container.wantsLayer = true
         container.layer?.masksToBounds = true
-        container.addSubview(hosting.view)
+        scrollDocument.autoresizesSubviews = false
+        scrollDocument.wantsLayer = true
+        scrollDocument.layer?.masksToBounds = true
+        scrollDocument.addSubview(hosting.view)
+        scrollView.documentView = scrollDocument
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.drawsBackground = false
+        scrollView.autoresizingMask = [.width, .height]
+        scrollView.frame = container.bounds
+        container.autoresizesSubviews = true
+        container.addSubview(scrollView)
         window.contentView = container
+        if let screen = window.screen ?? NSScreen.main {
+            window.setFrameTopLeftPoint(NSPoint(x: screen.visibleFrame.midX - 190, y: screen.visibleFrame.maxY))
+        }
         updateContentSize(initialSize)
         window.center()
     }
@@ -53,6 +70,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     override func showWindow(_ sender: Any?) {
         if window?.isMiniaturized == true { window?.deminiaturize(sender) }
+        updateContentSize(contentSize, force: true)
         super.showWindow(sender)
     }
 
@@ -60,11 +78,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         onClose()
     }
 
-    private func updateContentSize(_ size: NSSize) {
+    func windowDidChangeScreen(_ notification: Notification) {
+        updateContentSize(contentSize, force: true)
+    }
+
+    private func updateContentSize(_ size: NSSize, force: Bool = false) {
         guard let window, size.width.isFinite, size.height.isFinite,
               size.width > 0, size.height > 0 else { return }
         let size = NSSize(width: ceil(size.width), height: ceil(size.height))
-        guard size != contentSize else { return }
+        guard force || size != contentSize else { return }
         contentSize = size
         // Leave room for the next expansion before SwiftUI lays it out. Resizing
         // this viewport to the collapsed height makes an expanding VStack briefly
@@ -72,7 +94,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         layoutHeight = max(layoutHeight, size.height)
         hosting.view.frame = NSRect(origin: .zero,
             size: NSSize(width: size.width, height: layoutHeight))
-        let height = window.frameRect(forContentRect: NSRect(origin: .zero, size: size)).height
+        scrollDocument.setFrameSize(size)
+        let idealHeight = window.frameRect(forContentRect: NSRect(origin: .zero, size: size)).height
+        let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? window.frame
+        let height = Self.fittingHeight(idealHeight, top: window.frame.maxY, visibleFrame: visibleFrame)
         resizeTimer?.invalidate()
         resizeTimer = nil
         resizeVersion += 1
@@ -102,12 +127,21 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         RunLoop.main.add(timer, forMode: .common)
     }
 
+    /// Preserve the top edge and leave the Dock/menu bar outside the viewport.
+    static func fittingHeight(_ idealHeight: CGFloat, top: CGFloat, visibleFrame: NSRect) -> CGFloat {
+        min(idealHeight, max(1, min(top, visibleFrame.maxY) - visibleFrame.minY))
+    }
+
     private func setHeight(_ height: CGFloat, width: CGFloat) {
         guard let window else { return }
         var frame = window.frame
-        frame.origin.y = frame.maxY - height
+        let top = min(frame.maxY, window.screen?.visibleFrame.maxY ?? frame.maxY)
+        frame.origin.y = top - height
         frame.size = NSSize(width: width, height: height)
         window.setFrame(frame, display: true)
+        // Clamp a previous scroll offset when a disclosure removes content.
+        scrollView.contentView.scroll(to: scrollView.contentView.constrainBoundsRect(scrollView.contentView.bounds).origin)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 }
 

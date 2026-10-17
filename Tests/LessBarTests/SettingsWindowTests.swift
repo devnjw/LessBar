@@ -4,6 +4,59 @@ import XCTest
 @testable import LessBar
 
 final class SettingsWindowTests: XCTestCase {
+    @MainActor func testHeightIsLimitedByAvailableSpaceBelowTheFixedTop() {
+        let screen = NSRect(x: 0, y: 40, width: 1024, height: 700)
+        XCTAssertEqual(SettingsWindowController.fittingHeight(1000, top: 650, visibleFrame: screen), 610)
+        XCTAssertEqual(SettingsWindowController.fittingHeight(300, top: 650, visibleFrame: screen), 300)
+        XCTAssertEqual(SettingsWindowController.fittingHeight(1000, top: 900, visibleFrame: screen), 700)
+    }
+
+    @MainActor func testOverflowScrollsAndCollapseRestoresReachableContent() async throws {
+        _ = NSApplication.shared
+        let model = TestContentSize()
+        let controller = SettingsWindowController(rootView: TestContent(model: model))
+        let window = try XCTUnwrap(controller.window)
+        defer { window.orderOut(nil) }
+        controller.showWindow(nil)
+        try await Task.sleep(for: .milliseconds(100))
+        let top = window.frame.maxY
+        model.height = 3000
+        try await Task.sleep(for: .milliseconds(350))
+        let scroll = try XCTUnwrap(window.contentView?.subviews.first as? NSScrollView)
+        let document = try XCTUnwrap(scroll.documentView)
+        XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
+        XCTAssertGreaterThanOrEqual(window.frame.minY, try XCTUnwrap(window.screen).visibleFrame.minY - 0.5)
+        XCTAssertEqual(document.frame.height, 3000, accuracy: 0.5)
+        document.scroll(NSPoint(x: 0, y: 2000))
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 1000)
+        model.height = 180
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 0.5)
+        XCTAssertEqual(window.contentView!.bounds.height, 180, accuracy: 0.5)
+        XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
+    }
+
+    @MainActor func testTimingSliderKeepsPreciseAccessibleStepsWithoutTicks() {
+        let slider = TimingSliderControl()
+        slider.minValue = 0
+        slider.maxValue = 10
+        slider.step = 0.1
+        slider.doubleValue = 3
+        var value = 3.0
+        slider.onChange = { value = $0 }
+        XCTAssertEqual(slider.numberOfTickMarks, 0)
+        XCTAssertTrue(slider.accessibilityPerformIncrement())
+        XCTAssertEqual(value, 3.1, accuracy: 0.001)
+        XCTAssertTrue(slider.accessibilityPerformDecrement())
+        XCTAssertEqual(value, 3, accuracy: 0.001)
+        slider.doubleValue = 10
+        XCTAssertTrue(slider.accessibilityPerformIncrement())
+        XCTAssertEqual(value, 10)
+        slider.isEnabled = false
+        XCTAssertFalse(slider.accessibilityPerformDecrement())
+        XCTAssertEqual(value, 10)
+    }
+
     @MainActor func testSettingsPresenceSurvivesMinimizeAndEndsOnlyOnClose() async throws {
         let app = NSApplication.shared
         let previousPolicy = app.activationPolicy()
@@ -167,7 +220,8 @@ final class SettingsWindowTests: XCTestCase {
             XCTAssertEqual(window.frame.maxY, top, accuracy: 0.5)
         }
         XCTAssertEqual(try XCTUnwrap(window.contentView).bounds.height, 180, accuracy: 0.5)
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(window.contentView?.subviews.first).frame.height, 420)
+        let scroll = try XCTUnwrap(window.contentView?.subviews.first as? NSScrollView)
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(scroll.documentView?.subviews.first).frame.height, 420)
         // A later expansion must still work after cancelling the previous timer.
         model.height = 300
         try await Task.sleep(nanoseconds: 350_000_000)

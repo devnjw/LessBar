@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onSettings: { [weak self] in self?.showSettings() },
             onHowToUse: { [weak self] in self?.showSettings(showHowToUse: true) })
         if !UserDefaults.standard.bool(forKey: "hasShownSetup") {
-            showSettings()
+            showSettings(showHowToUse: true)
             UserDefaults.standard.set(true, forKey: "hasShownSetup")
         }
     }
