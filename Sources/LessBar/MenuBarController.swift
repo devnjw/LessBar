@@ -17,6 +17,7 @@ final class MenuBarState: ObservableObject {
 final class MenuBarController: NSObject {
     let state = MenuBarState()
     var isSupported: Bool { engine.isSupported }
+    var usesNativeVisibility: Bool { engine.usesNativeVisibility }
     private let preferences: Preferences
     private let toggle: NSStatusItem
     private let engine: LengthMenuBarEngine
@@ -138,6 +139,22 @@ final class MenuBarController: NSObject {
 
     private func collapse(reportFailure: Bool = false) {
         guard isSupported else { return }
+        if engine.usesNativeVisibility {
+            guard !engine.isCollapsed, !engine.isNativePending else { return }
+            engine.collapseNative { [weak self] succeeded in
+                guard let self else { return }
+                if succeeded {
+                    policy.didCollapse(pointerInMenuBar: MenuBarGeometry.screen(at: NSEvent.mouseLocation) != nil)
+                    state.feedback = ""
+                } else {
+                    policy.didReveal(now: now)
+                    state.feedback = state.accessibilityGranted ? L10n.positionRecovery : L10n.accessibilityNeeded
+                }
+                geometryAt = 0
+                updateButton()
+            }
+            return
+        }
         if sharingTask != nil { collapseAfterSharing = true; return }
         if alignSharingIndicator(thenCollapse: true) { return }
         if !engine.validateBoundaryOrder() {
@@ -166,6 +183,7 @@ final class MenuBarController: NSObject {
     }
 
     private func restartRecovery() {
+        guard !engine.usesNativeVisibility else { return }
         let anchors = lastAnchors.isEmpty ? engine.anchors : lastAnchors
         if recovery.prepare(anchors: anchors, showControls: showsChevron) {
             recovery.startMonitoring()
@@ -248,8 +266,8 @@ final class MenuBarController: NSObject {
             button.title = ""
             if editing {
                 ChevronAppearance.configureDivider(button)
-            } else if showsChevron && !engine.isCollapsed {
-                ChevronAppearance.configure(button, collapsed: false)
+            } else if showsChevron && (!engine.isCollapsed || engine.usesNativeVisibility) {
+                ChevronAppearance.configure(button, collapsed: engine.isCollapsed)
             } else { button.image = nil }
             button.setAccessibilityLabel(engine.isCollapsed ? L10n.showIcons : L10n.hideIcons)
             button.toolTip = L10n.toggleTooltip
@@ -278,7 +296,11 @@ final class MenuBarController: NSObject {
         if AXIsProcessTrusted() != state.accessibilityGranted { applyPreferences() }
         engine.synchronizeMirrorSpacing()
         geometryAt = now
-        cachedStatusFrames = MenuBarOccupancy.statusItemFrames()
+        engine.refreshNativeFrames()
+        cachedStatusFrames = engine.usesNativeVisibility ? engine.nativeFrames : MenuBarOccupancy.statusItemFrames()
+        if engine.usesNativeVisibility && !state.accessibilityGranted && (engine.isCollapsed || engine.isNativePending) {
+            reveal(all: true)
+        }
         cachedMenus.removeAll()
         if state.accessibilityGranted {
             for screen in NSScreen.screens {
@@ -293,14 +315,18 @@ final class MenuBarController: NSObject {
     private func isEmpty(_ point: CGPoint) -> Bool {
         guard let screen = MenuBarGeometry.screen(at: point) else { return false }
         let ownControls = (MenuBarOccupancy.ownStatusItemFrames() ?? []).filter { $0.width > 1 && $0.width < 100 }
+        // Visibility can change between geometry refreshes. Do not reuse the
+        // expanded inventory after a native restriction has hidden those icons.
+        let statusFrames = engine.usesNativeVisibility ? engine.nativeFrames : cachedStatusFrames
         return MenuBarGeometry.isEmpty(point: point, menu: MenuBarGeometry.menuBarRect(screen),
             applicationMenus: cachedMenus[MenuBarGeometry.displayID(screen)],
-            statusItems: cachedStatusFrames.map { $0 + ownControls })
+            statusItems: statusFrames.map { $0 + ownControls })
     }
 
     @objc private func checkInteraction() {
         if sharingTask != nil { return }
         if now - geometryAt > 0.2 { refreshGeometry() }
+        if engine.usesNativeVisibility && engine.isNativePending { return }
         let point = NSEvent.mouseLocation
         let screen = MenuBarGeometry.screen(at: point)
         let display = screen.map(MenuBarGeometry.displayID)
@@ -396,7 +422,7 @@ final class MenuBarController: NSObject {
     /// Correct the system item's order while the original native boundary is
     /// present. Its saved placement then survives ordinary hide/show cycles.
     private func alignSharingIndicator(thenCollapse: Bool) -> Bool {
-        guard isSupported, !engine.isCollapsed, !editing, sharingTask == nil,
+        guard !engine.usesNativeVisibility, isSupported, !engine.isCollapsed, !editing, sharingTask == nil,
               AXIsProcessTrusted() else { return false }
         if now < sharingRetryAfter {
             collapseAfterSharing = collapseAfterSharing || thenCollapse

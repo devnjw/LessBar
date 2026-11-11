@@ -21,6 +21,7 @@ cp Resources/Brand/LessBarMark.pdf "$APP_PATH/Contents/Resources/"
 ditto "$BIN_DIR/LessBar_LessBar.bundle" "$APP_PATH/Contents/Resources/LessBar_LessBar.bundle"
 cp Resources/Info.plist "$APP_PATH/Contents/Info.plist"
 cp LICENSE "$APP_PATH/Contents/Resources/LICENSE.txt"
+cp Sources/NativeVisibility/LICENSE "$APP_PATH/Contents/Resources/HiddenBar-LICENSE.txt"
 
 if [[ -n "${SIGNING_IDENTITY:-}" ]]; then
   codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$APP_PATH"

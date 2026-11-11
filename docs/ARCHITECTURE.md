@@ -6,7 +6,7 @@ Less Bar uses Swift, AppKit and SwiftUI with no third-party dependencies.
 | --- | --- |
 | `AppDelegate` | App lifecycle, prototype preference migration and settings window |
 | `MenuBarController` | Native status item/menu, hide/show coordination, published UI state |
-| `MenuBarEngine` | OS-dependent status-item width strategy and support gate |
+| `MenuBarEngine` | OS-dependent width or native visibility strategy |
 | `RecoveryController` | Independent reveal button, placement, timer ownership and teardown |
 | `LayoutRecovery` | Testable bounded retry policy for asynchronous menu layout |
 | `LayoutSafety` | Pure geometry: coordinate conversion and collision-free positioning |
@@ -54,7 +54,11 @@ The app language preference supports system, English and Korean through a native
 
 ## System constraints
 
-The width strategy is enabled on macOS 13–26, with macOS 27+ explicitly disabled pending a verified implementation. The separate reveal window is needed when macOS removes an oversized native item.
+The width strategy is enabled on macOS 13–26. The separate reveal window is needed when macOS removes an oversized native item.
+
+On macOS 27+, `NativeMenuBarVisibility` selects allowed bundle identities relative to the existing boundary. The Objective-C `NativeVisibility` target dynamically loads MenuBarClientCore, validates selectors and catches Objective-C exceptions. It creates only a process-owned menu visibility assertion, not an assessment session. Missing APIs, lost Accessibility authorization, activation failure, cancellation, timeout, reopening and quitting recover to visible icons. System-owner bundles remain allowed, multiple icons of one app share visibility, and the legacy always-hidden section stays expanded. The native system fade is unchanged.
+
+Accessibility inventory can retain rectangles for icons hidden by the assertion. Hit testing therefore filters the measured inventory by the active allow-list at read time. The coordinator reads these current frames directly rather than reusing an expanded-state occupancy cache. Reveal clears the filter immediately. Visible icons and application menus remain occupied; hidden app rectangles become empty space for both hover and click.
 
 With Accessibility permission, sharing-control placement reads only Control Center's extras menu bar and the exact `com.apple.menuextra.audiovideo` identifier. Its inset AX bounds must match exactly one on-screen status window owned by Control Center. Ambiguous geometry, unavailable permission and unknown identifiers never produce a drag. The native boundary is not moved to another group.
 

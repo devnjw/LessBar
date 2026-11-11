@@ -35,7 +35,25 @@ final class LengthMenuBarEngine {
     private var mirrorIsSecondary: [Int: Bool] = [:]
     private(set) var isCollapsed = false
     private(set) var alwaysCollapsed = false
-    let isSupported = ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27
+    let usesNativeVisibility = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+    private let native = NativeMenuBarVisibility()
+    var isNativePending: Bool { native.pending }
+    var nativeFrames: [CGRect] { native.frames }
+    var isSupported: Bool { !usesNativeVisibility || NativeMenuBarVisibility.available }
+
+    func refreshNativeFrames() { if usesNativeVisibility { native.refreshFrames() } }
+
+    func collapseNative(completion: @escaping @MainActor (Bool) -> Void) {
+        guard let boundary = normal.item.button?.window?.frame, boundary.width > 0 else {
+            completion(false); return
+        }
+        native.collapse(boundary: boundary) { [weak self] succeeded in
+            guard let self else { return }
+            isCollapsed = succeeded
+            refreshLayout()
+            completion(succeeded)
+        }
+    }
     var isAllExpanded: Bool { !isCollapsed && !alwaysCollapsed }
     var normalItem: NSStatusItem { normal.item }
     var secondaryItem: NSStatusItem? { alwaysHidden?.item }
@@ -76,6 +94,7 @@ final class LengthMenuBarEngine {
 
     @discardableResult
     func setCollapsed(_ collapsed: Bool) -> Bool {
+        guard !usesNativeVisibility else { return false }
         if collapsed && !isCollapsed && (!isSupported || !canCollapse) { return false }
         isCollapsed = collapsed && isSupported
         if collapsed { alwaysCollapsed = alwaysHidden != nil }
@@ -84,17 +103,29 @@ final class LengthMenuBarEngine {
     }
 
     func reveal(all: Bool) {
+        native.reveal()
         isCollapsed = false
-        alwaysCollapsed = alwaysHidden != nil && !all
+        alwaysCollapsed = !usesNativeVisibility && alwaysHidden != nil && !all
         refreshLayout()
     }
 
     func hideAlwaysHidden() {
+        guard !usesNativeVisibility else { return }
         alwaysCollapsed = alwaysHidden != nil
         refreshLayout()
     }
 
     func refreshLayout() {
+        if usesNativeVisibility {
+            normal.item.isVisible = true
+            // Keep the boundary at its saved location even without arrow artwork.
+            // macOS 27 ignores the old width-based hiding technique.
+            normal.set(collapsed: false, visible: showDividers || editing)
+            normal.item.button?.cell?.isEnabled = true
+            alwaysHidden?.set(collapsed: false, visible: editing)
+            synchronizeMirrorSpacing()
+            return
+        }
         // Update the left boundary before the right boundary to avoid momentarily
         // exposing the always-hidden group during ordinary reveal.
         alwaysHidden?.set(collapsed: alwaysCollapsed, visible: showDividers || editing)
@@ -132,7 +163,7 @@ final class LengthMenuBarEngine {
                 }
             }
             let secondary = mirrorIsSecondary[window.windowNumber] ?? false
-            let collapsed = secondary ? alwaysCollapsed : isCollapsed
+            let collapsed = !usesNativeVisibility && (secondary ? alwaysCollapsed : isCollapsed)
             let visible = collapsed || showDividers || editing
             mirrorPadding[window.windowNumber]?.isActive = visible
             let length: CGFloat = collapsed ? collapsedLength : ((showDividers || editing) ? LayoutSafety.controlWidth : 0)
@@ -168,7 +199,10 @@ final class LengthMenuBarEngine {
     }
 
     func stop() {
-        reveal(all: true)
+        native.reveal()
+        isCollapsed = false
+        alwaysCollapsed = false
+        refreshLayout()
         if let alwaysHidden { NSStatusBar.system.removeStatusItem(alwaysHidden.item) }
         alwaysHidden = nil
     }
