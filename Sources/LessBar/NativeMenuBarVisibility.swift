@@ -1,35 +1,120 @@
 import AppKit
 @preconcurrency import ApplicationServices
-import NativeVisibility
+import OSLog
 
-/// Only menu-bar visibility is restricted. No assessment-session APIs are used.
-/// The Objective-C bridge (MIT, Dwarves Foundation) catches private-API exceptions.
+/// AX identities and frames for app selection and original system-item placement.
 struct NativeMenuBarItem: Sendable {
     let bundle: String
     let frame: CGRect // Accessibility coordinates; x matches AppKit.
+    var identifier: String? = nil
 }
 
 enum NativeMenuBarSelection {
-    static func occupiedFrames(items: [NativeMenuBarItem], allowedBundles: Set<String>?) -> [CGRect] {
-        items.filter { allowedBundles?.contains($0.bundle) ?? true }.map(\.frame)
+    static let recordingIdentifier = "com.apple.menuextra.audiovideo"
+    // Only these original system controls are suppressed by this mode. Never
+    // discard every MenuBarAgent frame: Clock and Control Center must still work.
+    static let restrictedSystemIdentifiers: Set<String> = [recordingIdentifier,
+        "com.apple.menuextra.focus", "com.apple.menuextra.focusmode",
+        "com.apple.menuextra.airdrop", "com.apple.menuextra.nowplaying",
+        "com.apple.menuextra.user", "com.apple.menuextra.fastuserswitcher",
+        "com.apple.menuextra.liveactivity", "com.apple.menuextra.liveactivities"]
+
+    static func occupiedFrames(items: [NativeMenuBarItem], allowedBundles: Set<String>?,
+                               restrictedFrames: [CGRect] = [], restrictSystemItems: Bool = false) -> [CGRect] {
+        let visibleSystemFrames = items.filter {
+            $0.identifier != nil && !restrictedSystemIdentifiers.contains($0.identifier!)
+        }.map(\.frame)
+        func matches(_ a: CGRect, _ b: CGRect) -> Bool {
+            abs(a.midX - b.midX) < 1 && a.maxY > b.minY && a.minY < b.maxY
+        }
+        return items.filter { item in
+            guard allowedBundles?.contains(item.bundle) ?? true else { return false }
+            guard restrictSystemItems else { return true }
+            if let id = item.identifier { return !restrictedSystemIdentifiers.contains(id) }
+            // AXExtrasMenuBar duplicates the agent's named system elements.
+            if item.bundle == "com.apple.MenuBarAgent",
+               !visibleSystemFrames.contains(where: { matches(item.frame, $0) }),
+               restrictedFrames.contains(where: { matches(item.frame, $0) }) { return false }
+            return true
+        }.map(\.frame)
     }
 
+    private static func section(items: [NativeMenuBarItem], boundary: CGRect, ownBundle: String,
+                                screens: [CGRect]) -> (CGRect, [NativeMenuBarItem])? {
+        let screen = screens.first { $0.contains(CGPoint(x: boundary.midX, y: boundary.midY)) }
+        let dividers = items.filter { $0.bundle == ownBundle &&
+            (screen?.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) ?? true) }
+        guard let divider = dividers.min(by: {
+            hypot($0.frame.midX - boundary.midX, $0.frame.midY - boundary.midY) <
+            hypot($1.frame.midX - boundary.midX, $1.frame.midY - boundary.midY)
+        })?.frame else { return nil }
+        let measuredScreen = screens.first { $0.contains(CGPoint(x: divider.midX, y: divider.midY)) }
+        let candidates = items.filter {
+            $0.frame.maxY > divider.minY && $0.frame.minY < divider.maxY &&
+            (measuredScreen?.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) ?? true)
+        }
+        return (divider, candidates)
+    }
+
+    /// nil means inactive or unobserved, never permission to hide a right-side item.
+    static func recordingIsOnHiddenSide(items: [NativeMenuBarItem], boundary: CGRect,
+                                       ownBundle: String, screens: [CGRect], leftToRight: Bool) -> Bool? {
+        guard let (divider, candidates) = section(items: items, boundary: boundary,
+                ownBundle: ownBundle, screens: screens) else { return nil }
+        let indicators = candidates.filter { $0.identifier == recordingIdentifier }
+        guard !indicators.isEmpty else { return nil }
+        return indicators.allSatisfy {
+            leftToRight ? $0.frame.midX < divider.midX : $0.frame.midX > divider.midX
+        }
+    }
+
+    static func isProtectedSystemOwner(_ bundle: String) -> Bool {
+        bundle.hasPrefix("com.apple.") && bundle != "com.apple.TextInputMenuAgent"
+    }
+
+    /// Compare items and the boundary from the same AX snapshot and menu bar.
     /// An app with several icons stays visible if any of its icons is visible.
     static func allowed(items: [NativeMenuBarItem], boundary: CGRect, ownBundle: String,
-                        leftToRight: Bool) -> [String] {
-        let visible = items.filter {
-            leftToRight ? $0.frame.midX >= boundary.midX : $0.frame.midX <= boundary.midX
+                        leftToRight: Bool, screens: [CGRect] = [],
+                        systemOwners: [String] = []) -> [String] {
+        let (divider, candidates) = section(items: items, boundary: boundary,
+            ownBundle: ownBundle, screens: screens) ?? (boundary, items)
+        let visible = candidates.filter {
+            leftToRight ? $0.frame.midX >= divider.midX : $0.frame.midX <= divider.midX
         }.map(\.bundle)
-        let systemOwners = items.filter { $0.bundle.hasPrefix("com.apple.") }.map(\.bundle)
-        return Set(visible + systemOwners + [ownBundle, "com.apple.MenuBarAgent", "com.apple.controlcenter", "com.apple.systemuiserver"])
+        let protected = (items.map(\.bundle) + systemOwners).filter(isProtectedSystemOwner)
+        return Set(visible + protected + [ownBundle, "com.apple.MenuBarAgent", "com.apple.controlcenter", "com.apple.systemuiserver"])
             .sorted()
     }
 }
 
 @MainActor
 final class NativeMenuBarVisibility {
-    static var available: Bool { HBNativeVisibilityIsAvailable() }
-    private var assertion: AnyObject?
+    static var available: Bool { true }
+    private let preferences = NativeMenuBarPreferences()
+    private var hiddenBundles: Set<String>?
+    private let recordingRestriction = RecordingIndicatorRestriction()
+    private var restrictedFrames: [CGRect] = []
+    private var lastBoundary: CGRect?
+    private var recordingOnHiddenSide = false
+    private var appliedPlan: NativeCollapsePlan?
+    private var selectionDirty = true
+    private let log = Logger(subsystem: "io.github.devnjw.LessBar", category: "nativeSelection")
+    var needsPreferencesAccess: Bool { !preferences.hasAccess }
+    func requestPreferencesAccess(_ completion: @escaping @MainActor (Bool) -> Void) {
+        preferences.requestAccess(completion)
+    }
+    func markSelectionDirty() { selectionDirty = true }
+
+    init() {
+        if let saved = UserDefaults.standard.stringArray(forKey: "nativeHiddenBundles") {
+            hiddenBundles = Set(saved)
+            selectionDirty = false
+        }
+        // Recover a previous interrupted session before selecting any new items.
+        do { try preferences.restore(releaseOwnership: true) }
+        catch { log.error("Native preference recovery requires attention: \(String(describing: error), privacy: .public)") }
+    }
     private var generation = 0
     private(set) var pending = false
     private var hitTestItems: [NativeMenuBarItem] = []
@@ -37,7 +122,8 @@ final class NativeMenuBarVisibility {
     // AX may retain rectangles for restricted icons. Only the current visible
     // identities occupy space; keep filtering at read time across transitions.
     var frames: [CGRect] {
-        NativeMenuBarSelection.occupiedFrames(items: hitTestItems, allowedBundles: allowedBundles)
+        NativeMenuBarSelection.occupiedFrames(items: hitTestItems, allowedBundles: allowedBundles,
+            restrictedFrames: restrictedFrames, restrictSystemItems: recordingRestriction.isActive)
     }
     private var scanning = false
     private var scannedAt: TimeInterval = -Double.infinity
@@ -103,7 +189,9 @@ final class NativeMenuBarVisibility {
                         var point = CGPoint.zero; var size = CGSize.zero
                         if AXValueGetValue(unsafeDowncast(p, to: AXValue.self), .cgPoint, &point),
                            AXValueGetValue(unsafeDowncast(z, to: AXValue.self), .cgSize, &size), size.width > 0 {
-                            items.append(.init(bundle: "com.apple.MenuBarAgent", frame: CGRect(origin: point, size: size)))
+                            let identity = id.lowercased().contains("textinput") || id.lowercased().contains("inputmenu")
+                                ? NativeMenuBarPreferences.inputBundle : "com.apple.MenuBarAgent"
+                            items.append(.init(bundle: identity, frame: CGRect(origin: point, size: size), identifier: id))
                         }
                     }
                     return
@@ -123,14 +211,83 @@ final class NativeMenuBarVisibility {
         guard AXIsProcessTrusted(), !scanning,
               ProcessInfo.processInfo.systemUptime - scannedAt > 0.5 else { return }
         scanning = true
+        let token = generation
         snapshot { [weak self] items in
             guard let self else { return }
             scanning = false
             scannedAt = ProcessInfo.processInfo.systemUptime
-            guard let primary = NSScreen.screens.first else { return }
+            guard generation == token, let primary = NSScreen.screens.first else { return }
             hitTestItems = items.map { .init(bundle: $0.bundle,
                 frame: LayoutSafety.appKitFrame(fromWindowServer: $0.frame,
-                    primaryScreenMaxY: primary.frame.maxY)) }
+                    primaryScreenMaxY: primary.frame.maxY), identifier: $0.identifier) }
+            if allowedBundles != nil, !pending, !recordingRestriction.isPending, let lastBoundary {
+                applyVisibility(items: items, boundary: lastBoundary) { [weak self] succeeded in
+                    if !succeeded { self?.log.error("Could not refresh the recording indicator restriction") }
+                }
+            }
+        }
+    }
+
+    private func applyVisibility(items: [NativeMenuBarItem], boundary: CGRect,
+                                            completion: @escaping @MainActor (Bool) -> Void) {
+        guard let primary = NSScreen.screens.first else { completion(false); return }
+        let screens = NSScreen.screens.map {
+            LayoutSafety.appKitFrame(fromWindowServer: $0.frame, primaryScreenMaxY: primary.frame.maxY)
+        }
+        let observed = NativeMenuBarSelection.recordingIsOnHiddenSide(items: items, boundary: boundary,
+            ownBundle: Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar", screens: screens,
+            leftToRight: NSApp.userInterfaceLayoutDirection == .leftToRight)
+        if let observed { recordingOnHiddenSide = observed }
+        // While a restriction is held the system may omit its own hidden item
+        // from AX. Retain that decision until reveal restores the original item.
+        let hide = observed ?? (recordingRestriction.isActive && recordingOnHiddenSide)
+        if hide {
+            let frames = items.filter {
+                $0.identifier.map(NativeMenuBarSelection.restrictedSystemIdentifiers.contains) ?? false
+            }.map { LayoutSafety.appKitFrame(fromWindowServer: $0.frame, primaryScreenMaxY: primary.frame.maxY) }
+            if !frames.isEmpty { restrictedFrames = frames }
+        }
+        let hidden = hiddenBundles ?? []
+        let visible = Set(items.map(\.bundle)).subtracting(hidden)
+        let bundles = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+            .union(items.map(\.bundle)).union(preferences.allBundleIdentities)
+            .union([Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar"])
+        let exclusions = preferences.restrictionExclusions(hidden: hidden, visible: visible)
+        let plan = NativeCollapsePlan(hidden: hidden, allBundles: bundles,
+            resolvedHidden: exclusions, recordingOnHiddenSide: hide)
+        if appliedPlan == plan && recordingRestriction.isActive == plan.restrictSystemItems {
+            completion(true)
+            return
+        }
+        let token = generation
+        if plan.restrictSystemItems {
+            // The assertion hides the apps and the original AV item in one
+            // system reflow. Restore any old preference flags only afterwards,
+            // while the assertion already keeps those apps off the bar.
+            recordingRestriction.apply(hidden: true, allowing: plan.restrictionAllowedBundles) { [weak self] succeeded in
+                guard let self, generation == token else { return }
+                guard succeeded else { completion(false); return }
+                do {
+                    try preferences.hide(bundles: plan.preferenceHiddenBundles, keepingVisible: visible)
+                    appliedPlan = plan
+                    completion(true)
+                } catch {
+                    log.error("Could not apply single-transition hiding: \(String(describing: error), privacy: .public)")
+                    completion(false)
+                }
+            }
+        } else {
+            do {
+                // When switching away from a held assertion, establish the
+                // preference hiding before releasing it, so apps never flash in.
+                try preferences.hide(bundles: plan.preferenceHiddenBundles, keepingVisible: visible)
+                recordingRestriction.release()
+                appliedPlan = plan
+                completion(true)
+            } catch {
+                log.error("Could not apply preference hiding: \(String(describing: error), privacy: .public)")
+                completion(false)
+            }
         }
     }
 
@@ -141,36 +298,49 @@ final class NativeMenuBarVisibility {
         pending = true
         snapshot { [weak self] items in
             guard let self, self.generation == token else { return }
-            // Empty inventory must never become an allow-list that hides every app.
+            // An empty inventory must never replace the saved section selection.
             guard !items.isEmpty, AXIsProcessTrusted() else {
                 pending = false
                 completion(false)
                 return
             }
-            let allowed = NativeMenuBarSelection.allowed(items: items, boundary: boundary,
-                ownBundle: Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar",
-                leftToRight: NSApp.userInterfaceLayoutDirection == .leftToRight)
-            HBNativeVisibilityActivate((0..<64).map { NSNumber(value: $0) }, allowed) { [weak self] result, error in
-                MainActor.assumeIsolated {
-                    guard let self, self.generation == token else {
-                        if let result { HBNativeVisibilityInvalidate(result) }
-                        return
-                    }
-                    self.pending = false
-                    guard error == nil, let result else {
-                        self.reveal()
-                        completion(false)
-                        return
-                    }
-                    let old = self.assertion
-                    self.assertion = result as AnyObject
-                    self.allowedBundles = Set(allowed)
-                    if let old { HBNativeVisibilityInvalidate(old) }
-                    completion(true)
-                }
+            let ownBundle = Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar"
+            // An unobserved divider must fail open instead of hiding the wrong apps.
+            guard items.contains(where: { $0.bundle == ownBundle }),
+                  let primary = NSScreen.screens.first else {
+                pending = false
+                completion(false)
+                return
+            }
+            let screens = NSScreen.screens.map {
+                LayoutSafety.appKitFrame(fromWindowServer: $0.frame,
+                    primaryScreenMaxY: primary.frame.maxY)
+            }
+            let axBoundary = LayoutSafety.appKitFrame(fromWindowServer: boundary,
+                primaryScreenMaxY: primary.frame.maxY)
+            self.lastBoundary = axBoundary
+            let measuredAllowed = NativeMenuBarSelection.allowed(items: items, boundary: axBoundary,
+                ownBundle: ownBundle,
+                leftToRight: NSApp.userInterfaceLayoutDirection == .leftToRight,
+                screens: screens)
+            if self.selectionDirty || self.hiddenBundles == nil {
+                self.hiddenBundles = Set(items.map(\.bundle)).subtracting(measuredAllowed)
+                self.selectionDirty = false
+            }
+            let hidden = self.hiddenBundles ?? []
+            for item in items {
+                self.log.info("Selection \(item.bundle, privacy: .public) frame=\(String(describing: item.frame), privacy: .public) identifier=\(item.identifier ?? "", privacy: .public) hidden=\(hidden.contains(item.bundle))")
+            }
+            UserDefaults.standard.set(hidden.sorted(), forKey: "nativeHiddenBundles")
+            self.allowedBundles = Set(items.map(\.bundle)).subtracting(hidden)
+            self.applyVisibility(items: items, boundary: axBoundary) { [weak self] succeeded in
+                guard let self, generation == token else { return }
+                pending = false
+                if !succeeded { reveal() }
+                completion(succeeded)
             }
         }
-        // A missing private-framework callback cannot leave the UI stuck forever.
+        // An unresponsive AX inventory cannot leave the UI stuck forever.
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard let self, self.generation == token, pending else { return }
@@ -179,12 +349,20 @@ final class NativeMenuBarVisibility {
         }
     }
 
-    func reveal() {
+    @discardableResult
+    func reveal(releaseOwnership: Bool = false) -> Bool {
         generation += 1
         pending = false
-        if let assertion { HBNativeVisibilityInvalidate(assertion) }
-        assertion = nil
+        recordingRestriction.release()
+        appliedPlan = nil
+        restrictedFrames = []
+        do { try preferences.restore(releaseOwnership: releaseOwnership) }
+        catch {
+            log.error("Native reveal failed; recovery record retained: \(String(describing: error), privacy: .public)")
+            return false
+        }
         allowedBundles = nil
         scannedAt = -Double.infinity
+        return true
     }
 }

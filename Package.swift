@@ -8,7 +8,8 @@ let package = Package(
     products: [.executable(name: "LessBar", targets: ["LessBar"])],
     targets: [
         .target(name: "NativeVisibility", publicHeadersPath: "include", cSettings: [.define("HIDDENBAR_NATIVE_VISIBILITY", to: "1")]),
-        .executableTarget(name: "LessBar", dependencies: ["NativeVisibility"], resources: [.process("Resources")]),
+        .target(name: "NativePreferences", publicHeadersPath: "include"),
+        .executableTarget(name: "LessBar", dependencies: ["NativePreferences", "NativeVisibility"], resources: [.process("Resources")]),
         .testTarget(name: "LessBarTests", dependencies: ["LessBar"])
     ]
 )

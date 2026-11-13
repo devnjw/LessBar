@@ -31,6 +31,7 @@ final class LengthMenuBarEngine {
     private var alwaysHidden: StatusBoundary?
     private var showDividers = false
     private var editing = false
+    private var nativeSelectionPending = false
     private var mirrorPadding: [Int: NSLayoutConstraint] = [:]
     private var mirrorIsSecondary: [Int: Bool] = [:]
     private(set) var isCollapsed = false
@@ -39,6 +40,11 @@ final class LengthMenuBarEngine {
     private let native = NativeMenuBarVisibility()
     var isNativePending: Bool { native.pending }
     var nativeFrames: [CGRect] { native.frames }
+    var needsNativePreferencesAccess: Bool { usesNativeVisibility && native.needsPreferencesAccess }
+    func requestNativePreferencesAccess(_ completion: @escaping @MainActor (Bool) -> Void) {
+        native.requestPreferencesAccess(completion)
+    }
+    func markNativeSelectionDirty() { native.markSelectionDirty() }
     var isSupported: Bool { !usesNativeVisibility || NativeMenuBarVisibility.available }
 
     func refreshNativeFrames() { if usesNativeVisibility { native.refreshFrames() } }
@@ -50,6 +56,7 @@ final class LengthMenuBarEngine {
         native.collapse(boundary: boundary) { [weak self] succeeded in
             guard let self else { return }
             isCollapsed = succeeded
+            nativeSelectionPending = false
             refreshLayout()
             completion(succeeded)
         }
@@ -73,6 +80,11 @@ final class LengthMenuBarEngine {
     init(toggle: NSStatusItem) { normal = StatusBoundary(item: toggle) }
 
     func configure(showDividers: Bool, alwaysHiddenEnabled: Bool, editing: Bool) {
+        if usesNativeVisibility && self.editing && !editing {
+            // Retain the full divider until the post-drop snapshot has captured
+            // the final order. Shrinking it first moves its neighbours.
+            nativeSelectionPending = true
+        }
         self.showDividers = showDividers
         self.editing = editing
         if alwaysHiddenEnabled, alwaysHidden == nil {
@@ -103,7 +115,8 @@ final class LengthMenuBarEngine {
     }
 
     func reveal(all: Bool) {
-        native.reveal()
+        guard native.reveal() else { return }
+        nativeSelectionPending = false
         isCollapsed = false
         alwaysCollapsed = !usesNativeVisibility && alwaysHidden != nil && !all
         refreshLayout()
@@ -120,7 +133,7 @@ final class LengthMenuBarEngine {
             normal.item.isVisible = true
             // Keep the boundary at its saved location even without arrow artwork.
             // macOS 27 ignores the old width-based hiding technique.
-            normal.set(collapsed: false, visible: showDividers || editing)
+            normal.set(collapsed: false, visible: showDividers || editing || nativeSelectionPending)
             normal.item.button?.cell?.isEnabled = true
             alwaysHidden?.set(collapsed: false, visible: editing)
             synchronizeMirrorSpacing()
@@ -164,9 +177,9 @@ final class LengthMenuBarEngine {
             }
             let secondary = mirrorIsSecondary[window.windowNumber] ?? false
             let collapsed = !usesNativeVisibility && (secondary ? alwaysCollapsed : isCollapsed)
-            let visible = collapsed || showDividers || editing
+            let visible = collapsed || showDividers || editing || (usesNativeVisibility && nativeSelectionPending)
             mirrorPadding[window.windowNumber]?.isActive = visible
-            let length: CGFloat = collapsed ? collapsedLength : ((showDividers || editing) ? LayoutSafety.controlWidth : 0)
+            let length: CGFloat = collapsed ? collapsedLength : ((showDividers || editing || (usesNativeVisibility && nativeSelectionPending)) ? LayoutSafety.controlWidth : 0)
             // AppKit updates only the active display's content-width constraint on
             // macOS 26. Apply the same length to each retained native mirror.
             for view in content.subviews {
@@ -199,7 +212,8 @@ final class LengthMenuBarEngine {
     }
 
     func stop() {
-        native.reveal()
+        native.reveal(releaseOwnership: true)
+        nativeSelectionPending = false
         isCollapsed = false
         alwaysCollapsed = false
         refreshLayout()

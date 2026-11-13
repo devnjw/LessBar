@@ -51,3 +51,7 @@
 "systemLanguage" = "시스템 설정";
 "guideHoverAndClick" = "메뉴 막대 빈 공간에 마우스를 올리거나 클릭해 펼치세요.";
 "advanced" = "고급 설정";
+
+
+"nativePreferencesTitle" = "메뉴바 설정 접근 허용";
+"nativePreferencesExplanation" = "macOS 녹음 표시를 유지하며 앱 아이콘을 숨기려면 Control Center 설정 파일을 선택해 주세요. 아이콘을 펼치거나 앱을 종료하면 Less Bar가 바꾼 설정만 복원합니다.";

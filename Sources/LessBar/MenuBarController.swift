@@ -9,6 +9,7 @@ final class MenuBarState: ObservableObject {
     @Published var accessibilityGranted = false
     @Published var feedback = ""
     @Published var sharingFeedback = ""
+    @Published var nativePreferencesNeeded = false
 }
 
 /// One shared visibility state for every native mirrored menu bar. Geometry and
@@ -93,7 +94,7 @@ final class MenuBarController: NSObject {
     private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     private var showsChevron: Bool {
-        preferences.showsChevron(accessibilityGranted: state.accessibilityGranted)
+        state.nativePreferencesNeeded || preferences.showsChevron(accessibilityGranted: state.accessibilityGranted)
     }
 
     private var configuration: InteractionPolicy.Configuration {
@@ -117,6 +118,8 @@ final class MenuBarController: NSObject {
 
     private func applyPreferences() {
         state.accessibilityGranted = AXIsProcessTrusted()
+        if state.accessibilityGranted && state.feedback == L10n.accessibilityNeeded { state.feedback = "" }
+        state.nativePreferencesNeeded = engine.needsNativePreferencesAccess
         let collapsed = engine.isCollapsed
         recovery.stop()
         engine.configure(showDividers: showsChevron,
@@ -140,7 +143,7 @@ final class MenuBarController: NSObject {
     private func collapse(reportFailure: Bool = false) {
         guard isSupported else { return }
         if engine.usesNativeVisibility {
-            guard !engine.isCollapsed, !engine.isNativePending else { return }
+            guard !state.nativePreferencesNeeded, !engine.isCollapsed, !engine.isNativePending else { return }
             engine.collapseNative { [weak self] succeeded in
                 guard let self else { return }
                 if succeeded {
@@ -197,6 +200,11 @@ final class MenuBarController: NSObject {
         if !all { temporaryRestoreCollapsed = nil }
         recovery.stop()
         engine.reveal(all: all)
+        if engine.isCollapsed {
+            state.feedback = L10n.positionRecovery
+            updateButton()
+            return
+        }
         toggle.isVisible = true
         policy.didReveal(now: now, temporaryAll: temporary,
             temporaryDelay: preferences.temporaryShowDelay)
@@ -210,6 +218,15 @@ final class MenuBarController: NSObject {
     func temporarilyShowAll() {
         if temporaryRestoreCollapsed == nil { temporaryRestoreCollapsed = engine.isCollapsed }
         reveal(all: true, temporary: true)
+    }
+
+    func requestNativePreferencesAccess() {
+        reveal(all: true)
+        engine.requestNativePreferencesAccess { [weak self] succeeded in
+            guard let self else { return }
+            state.feedback = succeeded ? "" : L10n.nativePreferencesExplanation
+            applyPreferences()
+        }
     }
 
     func requestAccessibility() {
@@ -270,7 +287,9 @@ final class MenuBarController: NSObject {
                 ChevronAppearance.configure(button, collapsed: engine.isCollapsed)
             } else { button.image = nil }
             button.setAccessibilityLabel(engine.isCollapsed ? L10n.showIcons : L10n.hideIcons)
-            button.toolTip = L10n.toggleTooltip
+            // A zero-width status control must not keep a floating hover hint.
+            button.toolTip = nil
+            button.removeAllToolTips()
         }
     }
 
@@ -367,6 +386,7 @@ final class MenuBarController: NSObject {
                 engine.reveal(all: true)
                 updateButton()
             case .endEditing(let didDrag):
+                if didDrag { engine.markNativeSelectionDirty() }
                 editing = false
                 engine.configure(showDividers: showsChevron,
                     alwaysHiddenEnabled: preferences.enableAlwaysHidden, editing: false)

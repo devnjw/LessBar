@@ -7,6 +7,10 @@ Less Bar uses Swift, AppKit and SwiftUI with no third-party dependencies.
 | `AppDelegate` | App lifecycle, prototype preference migration and settings window |
 | `MenuBarController` | Native status item/menu, hide/show coordination, published UI state |
 | `MenuBarEngine` | OS-dependent width or native visibility strategy |
+| `NativeMenuBarVisibility` | AX section selection and coordinated macOS 27 transitions |
+| `NativeMenuBarPreferences` / `NativePreferences` | Container-aware visibility writes, file grant and durable recovery journal |
+| `NativeCollapsePlan` | Assign each ordinary app to one hiding mechanism per transition |
+| `RecordingIndicatorRestriction` / `NativeVisibility` | Scoped original-system-indicator hiding and cancellation |
 | `RecoveryController` | Independent reveal button, placement, timer ownership and teardown |
 | `LayoutRecovery` | Testable bounded retry policy for asynchronous menu layout |
 | `LayoutSafety` | Pure geometry: coordinate conversion and collision-free positioning |
@@ -56,9 +60,17 @@ The app language preference supports system, English and Korean through a native
 
 The width strategy is enabled on macOS 13–26. The separate reveal window is needed when macOS removes an oversized native item.
 
-On macOS 27+, `NativeMenuBarVisibility` selects allowed bundle identities relative to the existing boundary. The Objective-C `NativeVisibility` target dynamically loads MenuBarClientCore, validates selectors and catches Objective-C exceptions. It creates only a process-owned menu visibility assertion, not an assessment session. Missing APIs, lost Accessibility authorization, activation failure, cancellation, timeout, reopening and quitting recover to visible icons. System-owner bundles remain allowed, multiple icons of one app share visibility, and the legacy always-hidden section stays expanded. The native system fade is unchanged.
+On macOS 27+, `NativeMenuBarVisibility` measures the divider and icons in the same AX coordinate space and edited display. Ordinary reveal/rehide cycles retain selected identities; Command-drag marks the selection dirty. Apple system hosts stay protected except for the independently controlled Text Input item. Parent/helper identities are resolved through the system's tracked application records.
 
-Accessibility inventory can retain rectangles for icons hidden by the assertion. Hit testing therefore filters the measured inventory by the active allow-list at read time. The coordinator reads these current frames directly rather than reusing an expanded-state occupancy cache. Reveal clears the filter immediately. Visible icons and application menus remain occupied; hidden app rectangles become empty space for both hover and click.
+`NativeMenuBarPreferences` uses a file-picker grant and security-scoped bookmark for the Control Center preferences file. `NativePreferences` checks the Foundation container initializer at runtime and catches Objective-C exceptions. Reads and writes use the real domain/container pair; an absolute-file-path CFPreferences alias is not used because it can diverge from the system's cached state. Unknown fields and unrelated app records are preserved. A durable journal precedes changes and retains original values across ordinary reveals; quit and startup recovery release ownership after restoration. An unreadable journal blocks new changes. Apps already disabled by the user are not claimed.
+
+`NativeCollapsePlan` selects one mechanism for ordinary app icons. If the original `com.apple.menuextra.audiovideo` item is on the hidden side, a process-owned menu visibility assertion hides both that item and selected apps in one reflow. Existing app preference flags are restored while the assertion already keeps those apps hidden. If the recording control is on the visible side, only normal preference hiding is used. Text Input uses its own native visibility preference. Identical plans and unchanged app permission values do not initiate another transition.
+
+The Objective-C `NativeVisibility` bridge dynamically resolves MenuBarClientCore and validates selectors. It does not create an assessment session. This mechanism also suppresses some other system controls, including Focus, AirDrop and Now Playing, while held; the user-facing documentation states that limitation. No AV-only private entitlement is added, and no replacement indicators, screenshot covers or Screen Recording access are used. `RecordingIndicatorRestriction` rejects stale callbacks after reveal and replaces allow-lists without dropping the old assertion first when a new app appears.
+
+AX can retain hidden rectangles. Hit testing filters by active app identities and suppressed system-item identifiers, including duplicate anonymous MenuBarAgent rectangles, while retaining Clock and Control Center occupancy. The coordinator reads current frames rather than an expanded-state cache. Native and recovery buttons have no hover tooltips, preventing a floating hint from remaining after a zero-width control changes layout. Accessibility labels and native context menus remain.
+
+The native system fade remains. Multiple icons of one app can share visibility, and the legacy always-hidden section stays expanded. Missing permissions, unavailable API behavior, failed activation, cancellation, timeout, reopening and quitting retain recovery paths. Before publishing, verify actual menu-bar rendering separately from tests of geometry, cancellation and preference recovery.
 
 With Accessibility permission, sharing-control placement reads only Control Center's extras menu bar and the exact `com.apple.menuextra.audiovideo` identifier. Its inset AX bounds must match exactly one on-screen status window owned by Control Center. Ambiguous geometry, unavailable permission and unknown identifiers never produce a drag. The native boundary is not moved to another group.
 
@@ -71,7 +83,8 @@ The display name and distributed bundle are `Less Bar` and `Less Bar.app`. The S
 Run `swift test` for geometry, transient/permanent recovery failures, input handling and preference migration. Before a release, also verify:
 
 - Repeated hide/show from the native chevron and hover; UI state stays synchronized.
-- Sharing indicator visible before and after collapse; no overlapping recovery button.
+- On macOS 13–26, sharing indicator remains visible before and after collapse.
+- On macOS 27+, original recording control and Text Input follow their sections; verify the documented collateral system-control hiding and absence of overlapping reflows.
 - Recovery button receives the first click without window activation.
 - Native right-click Settings/How to Use/Quit menu, no custom spacing or separator.
 - Display changes, notches, full-screen Spaces and multiple displays.

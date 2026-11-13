@@ -7,6 +7,51 @@ final class NativeMenuBarVisibilityTests: XCTestCase {
         .init(bundle: bundle, frame: CGRect(x: x, y: 0, width: 20, height: 30))
     }
 
+    func testSelectionUsesMeasuredBoundaryRatherThanStaleAppKitProxy() {
+        let items = [item("lessbar", 700), item("moved.hidden", 500), item("visible", 800)]
+        let allowed = NativeMenuBarSelection.allowed(items: items, boundary: boundary,
+            ownBundle: "lessbar", leftToRight: true)
+        XCTAssertFalse(allowed.contains("moved.hidden"))
+        XCTAssertTrue(allowed.contains("visible"))
+    }
+
+    func testMovingBackToVisibleSideUsesCurrentBoundary() {
+        let items = [item("lessbar", 200), item("moved.visible", 300)]
+        XCTAssertTrue(NativeMenuBarSelection.allowed(items: items, boundary: boundary,
+            ownBundle: "lessbar", leftToRight: true).contains("moved.visible"))
+    }
+
+    func testAnotherDisplayCannotMakeAHiddenAppVisible() {
+        let items = [item("lessbar", 400), item("hidden", 200), item("visible", 500),
+                     item("lessbar", 1400), item("hidden", 1300)]
+        let screens = [CGRect(x: 0, y: 0, width: 1000, height: 800),
+                       CGRect(x: 1000, y: 0, width: 1000, height: 800)]
+        let allowed = NativeMenuBarSelection.allowed(items: items, boundary: boundary,
+            ownBundle: "lessbar", leftToRight: true, screens: screens)
+        XCTAssertFalse(allowed.contains("hidden"))
+        XCTAssertTrue(allowed.contains("visible"))
+    }
+
+    func testSelectionUsesTheDividerOnTheDisplayBeingEdited() {
+        let items = [item("lessbar", 400), item("moved", 300),
+                     item("lessbar", 1400), item("moved", 1500)]
+        let screens = [CGRect(x: 0, y: 0, width: 1000, height: 800),
+                       CGRect(x: 1000, y: 0, width: 1000, height: 800)]
+        let allowed = NativeMenuBarSelection.allowed(items: items,
+            boundary: CGRect(x: 1400, y: 0, width: 24, height: 30),
+            ownBundle: "lessbar", leftToRight: true, screens: screens)
+        XCTAssertTrue(allowed.contains("moved"))
+    }
+
+    func testInputSourceCanHideWhilePrivacyHostRemainsAllowed() {
+        let items = [item("com.apple.TextInputMenuAgent", 200),
+                     item("com.apple.controlcenter", 250)]
+        let allowed = NativeMenuBarSelection.allowed(items: items, boundary: boundary,
+            ownBundle: "lessbar", leftToRight: true)
+        XCTAssertFalse(allowed.contains("com.apple.TextInputMenuAgent"))
+        XCTAssertTrue(allowed.contains("com.apple.controlcenter"))
+    }
+
     func testHiddenIconAreaIsEmptyButVisibleAndSystemIconsRemainOccupied() {
         let items = [item("hidden.app", 200), item("visible.app", 500),
                      item("com.apple.MenuBarAgent", 600)]
@@ -55,7 +100,7 @@ final class NativeMenuBarVisibilityTests: XCTestCase {
             item("com.apple.TextInputMenuAgent", 250), item("third.party", 300)],
             boundary: boundary, ownBundle: "lessbar", leftToRight: true)
         XCTAssertTrue(allowed.contains("com.apple.MenuBarAgent"))
-        XCTAssertTrue(allowed.contains("com.apple.TextInputMenuAgent"))
+        XCTAssertFalse(allowed.contains("com.apple.TextInputMenuAgent"))
         XCTAssertFalse(allowed.contains("third.party"))
     }
 
