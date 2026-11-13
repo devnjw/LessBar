@@ -79,6 +79,8 @@ enum L10n {
     static var rehideDelay: String { text("rehideDelay") }
     static var temporaryShowAll: String { text("temporaryShowAll") }
     static var allowAccessibility: String { text("allowAccessibility") }
+    static var nativePreferencesTitle: String { text("nativePreferencesTitle") }
+    static var nativePreferencesExplanation: String { text("nativePreferencesExplanation") }
     static var accessibilityNeeded: String { text("accessibilityNeeded") }
     static func secondsFormat(_ value: Double) -> String {
         String(format: text("secondsFormat"), locale: Locale.current, value)

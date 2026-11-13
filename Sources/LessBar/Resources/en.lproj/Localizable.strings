@@ -51,3 +51,7 @@
 "systemLanguage" = "System Default";
 "guideHoverAndClick" = "Hover over or click empty menu bar space to reveal icons.";
 "advanced" = "Advanced";
+
+
+"nativePreferencesTitle" = "Allow Menu Bar Settings";
+"nativePreferencesExplanation" = "Choose the Control Center preferences file to hide app icons while keeping macOS recording indicators. Less Bar restores only its own changes when icons are shown or the app quits.";

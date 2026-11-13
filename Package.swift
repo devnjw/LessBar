@@ -7,7 +7,9 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [.executable(name: "LessBar", targets: ["LessBar"])],
     targets: [
-        .executableTarget(name: "LessBar", resources: [.process("Resources")]),
+        .target(name: "NativeVisibility", publicHeadersPath: "include", cSettings: [.define("HIDDENBAR_NATIVE_VISIBILITY", to: "1")]),
+        .target(name: "NativePreferences", publicHeadersPath: "include"),
+        .executableTarget(name: "LessBar", dependencies: ["NativePreferences", "NativeVisibility"], resources: [.process("Resources")]),
         .testTarget(name: "LessBarTests", dependencies: ["LessBar"])
     ]
 )

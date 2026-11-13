@@ -130,6 +130,11 @@ final class MenuBarGeometryTests: XCTestCase {
         XCTAssertGreaterThan(window.frame.width, 1)
         engine.configure(showDividers: preferences.showsChevron(accessibilityGranted: true),
             alwaysHiddenEnabled: false, editing: false)
+        if engine.usesNativeVisibility {
+            XCTAssertGreaterThan(window.frame.width, 1,
+                "Keep the divider stable until post-drop selection is captured")
+            engine.reveal(all: true)
+        }
         XCTAssertLessThanOrEqual(window.frame.width, 1)
         engine.configure(showDividers: preferences.showsChevron(accessibilityGranted: false),
             alwaysHiddenEnabled: false, editing: false)
