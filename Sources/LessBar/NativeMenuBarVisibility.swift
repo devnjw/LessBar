@@ -99,7 +99,9 @@ final class NativeMenuBarVisibility {
     private var recordingOnHiddenSide = false
     private var appliedPlan: NativeCollapsePlan?
     private var selectionDirty = true
+    private var hasVisibleFullscreenAXWindow = false
     private let log = Logger(subsystem: "io.github.devnjw.LessBar", category: "nativeSelection")
+    private var presentationOptionsObservation: NSKeyValueObservation?
     var needsPreferencesAccess: Bool { !preferences.hasAccess }
     func requestPreferencesAccess(_ completion: @escaping @MainActor (Bool) -> Void) {
         preferences.requestAccess(completion)
@@ -107,6 +109,9 @@ final class NativeMenuBarVisibility {
     func markSelectionDirty() { selectionDirty = true }
 
     init() {
+        presentationOptionsObservation = NSApp.observe(\.currentSystemPresentationOptions, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.refreshFrames(force: true) }
+        }
         if let saved = UserDefaults.standard.stringArray(forKey: "nativeHiddenBundles") {
             hiddenBundles = Set(saved)
             selectionDirty = false
@@ -129,16 +134,16 @@ final class NativeMenuBarVisibility {
     private var scannedAt: TimeInterval = -Double.infinity
 
     /// Run cross-process AX calls off the UI thread, with a bounded per-app timeout.
-    func snapshot(_ completion: @escaping @MainActor ([NativeMenuBarItem]) -> Void) {
+    func snapshot(_ completion: @escaping @MainActor ([NativeMenuBarItem], Bool) -> Void) {
         let apps = NSWorkspace.shared.runningApplications.compactMap { app -> (pid_t, String)? in
             guard app.bundleURL?.pathExtension == "app", let bundle = app.bundleIdentifier else { return nil }
             return (app.processIdentifier, bundle)
         }
         Task {
-            let items = await Task.detached(priority: .userInitiated) {
-                Self.readItems(apps)
+            let result = await Task.detached(priority: .userInitiated) {
+                (Self.readItems(apps), FullscreenWindowVisibility.snapshot(appPIDs: apps.map(\.0)))
             }.value
-            completion(items)
+            completion(result.0, result.1)
         }
     }
 
@@ -207,16 +212,20 @@ final class NativeMenuBarVisibility {
         return items
     }
 
-    func refreshFrames() {
+    func refreshFrames(force: Bool = false) {
         guard AXIsProcessTrusted(), !scanning,
-              ProcessInfo.processInfo.systemUptime - scannedAt > 0.5 else { return }
+              force || ProcessInfo.processInfo.systemUptime - scannedAt > 0.5 else { return }
         scanning = true
         let token = generation
-        snapshot { [weak self] items in
+        snapshot { [weak self] items, hasFullscreen in
             guard let self else { return }
             scanning = false
             scannedAt = ProcessInfo.processInfo.systemUptime
             guard generation == token, let primary = NSScreen.screens.first else { return }
+            if hasVisibleFullscreenAXWindow != hasFullscreen {
+                log.info("Visible AX fullscreen window changed: \(hasFullscreen, privacy: .public)")
+                hasVisibleFullscreenAXWindow = hasFullscreen
+            }
             hitTestItems = items.map { .init(bundle: $0.bundle,
                 frame: LayoutSafety.appKitFrame(fromWindowServer: $0.frame,
                     primaryScreenMaxY: primary.frame.maxY), identifier: $0.identifier) }
@@ -253,12 +262,16 @@ final class NativeMenuBarVisibility {
             .union(items.map(\.bundle)).union(preferences.allBundleIdentities)
             .union([Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar"])
         let exclusions = preferences.restrictionExclusions(hidden: hidden, visible: visible)
+        let systemFullscreen = NSApp.currentSystemPresentationOptions.contains(.fullScreen)
+        let systemRestrictionEnabled = !systemFullscreen && !hasVisibleFullscreenAXWindow
         let plan = NativeCollapsePlan(hidden: hidden, allBundles: bundles,
-            resolvedHidden: exclusions, recordingOnHiddenSide: hide)
+            resolvedHidden: exclusions, recordingOnHiddenSide: hide,
+            systemRestrictionEnabled: systemRestrictionEnabled)
         if appliedPlan == plan && recordingRestriction.isActive == plan.restrictSystemItems {
             completion(true)
             return
         }
+        log.info("Applying visibility plan: systemFullscreen=\(systemFullscreen, privacy: .public) axFullscreen=\(self.hasVisibleFullscreenAXWindow, privacy: .public) restrictSystemItems=\(plan.restrictSystemItems, privacy: .public) hiddenAppCount=\(plan.preferenceHiddenBundles.count, privacy: .public) allowedAppCount=\(plan.restrictionAllowedBundles.count, privacy: .public)")
         let token = generation
         if plan.restrictSystemItems {
             // The assertion hides the apps and the original AV item in one
@@ -266,10 +279,35 @@ final class NativeMenuBarVisibility {
             // while the assertion already keeps those apps off the bar.
             recordingRestriction.apply(hidden: true, allowing: plan.restrictionAllowedBundles) { [weak self] succeeded in
                 guard let self, generation == token else { return }
-                guard succeeded else { completion(false); return }
+                guard succeeded else {
+                    log.error("Assessment-mode visibility assertion failed to activate")
+                    completion(false)
+                    return
+                }
+                // Full screen may begin while the assertion activates. First
+                // establish preference hiding for ordinary apps, then release it.
+                if NSApp.currentSystemPresentationOptions.contains(.fullScreen) {
+                    do {
+                        try preferences.hide(bundles: hidden, keepingVisible: visible)
+                        recordingRestriction.release()
+                        let fullscreenPlan = NativeCollapsePlan(hidden: hidden, allBundles: bundles,
+                            resolvedHidden: exclusions, recordingOnHiddenSide: hide,
+                            systemRestrictionEnabled: false)
+                        appliedPlan = fullscreenPlan
+                        log.info("Full screen began during assertion activation; switched to preference-only hiding")
+                        completion(true)
+                    } catch {
+                        recordingRestriction.release()
+                        appliedPlan = nil
+                        log.error("Could not switch to preference-only hiding in full screen: \(String(describing: error), privacy: .public)")
+                        completion(false)
+                    }
+                    return
+                }
                 do {
                     try preferences.hide(bundles: plan.preferenceHiddenBundles, keepingVisible: visible)
                     appliedPlan = plan
+                    log.info("Assessment-mode visibility assertion active")
                     completion(true)
                 } catch {
                     log.error("Could not apply single-transition hiding: \(String(describing: error), privacy: .public)")
@@ -283,8 +321,15 @@ final class NativeMenuBarVisibility {
                 try preferences.hide(bundles: plan.preferenceHiddenBundles, keepingVisible: visible)
                 recordingRestriction.release()
                 appliedPlan = plan
+                log.info("Preference-only visibility plan active")
                 completion(true)
             } catch {
+                if !systemRestrictionEnabled {
+                    // Full screen takes priority over preserving the hidden
+                    // menu-bar restriction if the preference handoff fails.
+                    recordingRestriction.release()
+                    appliedPlan = nil
+                }
                 log.error("Could not apply preference hiding: \(String(describing: error), privacy: .public)")
                 completion(false)
             }
@@ -292,22 +337,81 @@ final class NativeMenuBarVisibility {
     }
 
     func collapse(boundary: CGRect, completion: @escaping @MainActor (Bool) -> Void) {
-        guard Self.available, AXIsProcessTrusted(), !pending else { completion(false); return }
+        guard Self.available else {
+            log.error("Native collapse rejected: macOS visibility API unavailable")
+            completion(false)
+            return
+        }
+        guard AXIsProcessTrusted() else {
+            log.error("Native collapse rejected: Accessibility permission is not trusted")
+            completion(false)
+            return
+        }
+        guard !pending else {
+            log.error("Native collapse rejected: another transition is pending")
+            completion(false)
+            return
+        }
         generation += 1
         let token = generation
         pending = true
-        snapshot { [weak self] items in
+        snapshot { [weak self] items, hasFullscreen in
             guard let self, self.generation == token else { return }
+            if hasVisibleFullscreenAXWindow != hasFullscreen {
+                log.info("Visible AX fullscreen window changed: \(hasFullscreen, privacy: .public)")
+                hasVisibleFullscreenAXWindow = hasFullscreen
+            }
+            let ownBundle = Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar"
+            let boundaryVisible = items.contains(where: { $0.bundle == ownBundle })
+            if !boundaryVisible && AXIsProcessTrusted() && NativeCollapsePlan.canReuseSavedSelection(
+                fullscreenWindowVisible: hasVisibleFullscreenAXWindow,
+                selectionDirty: selectionDirty, hasSavedSelection: hiddenBundles != nil) {
+                guard let primary = NSScreen.screens.first else {
+                    pending = false
+                    completion(false)
+                    return
+                }
+                // Keep the native item's saved position for reconciliation when
+                // the video leaves fullscreen and the menu bar becomes visible.
+                lastBoundary = LayoutSafety.appKitFrame(fromWindowServer: boundary,
+                    primaryScreenMaxY: primary.frame.maxY)
+                let hidden = hiddenBundles ?? []
+                let runningBundles = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+                let visible = runningBundles.subtracting(hidden)
+                let bundles = runningBundles.union(items.map(\.bundle))
+                    .union(preferences.allBundleIdentities).union([ownBundle])
+                let exclusions = preferences.restrictionExclusions(hidden: hidden, visible: visible)
+                let plan = NativeCollapsePlan(hidden: hidden, allBundles: bundles,
+                    resolvedHidden: exclusions, recordingOnHiddenSide: false,
+                    systemRestrictionEnabled: false)
+                do {
+                    try preferences.hide(bundles: plan.preferenceHiddenBundles, keepingVisible: visible)
+                    recordingRestriction.release()
+                    appliedPlan = plan
+                    allowedBundles = Set(items.map(\.bundle)).subtracting(hidden)
+                    pending = false
+                    log.info("Collapsed from saved menu-bar selection in video fullscreen; boundary omitted (items=\(items.count), hiddenApps=\(hidden.count))")
+                    completion(true)
+                } catch {
+                    recordingRestriction.release()
+                    appliedPlan = nil
+                    pending = false
+                    log.error("Could not apply saved selection in video fullscreen: \(String(describing: error), privacy: .public)")
+                    completion(false)
+                }
+                return
+            }
             // An empty inventory must never replace the saved section selection.
             guard !items.isEmpty, AXIsProcessTrusted() else {
+                log.error("Native collapse rejected: AX inventory empty or permission changed (items=\(items.count))")
                 pending = false
                 completion(false)
                 return
             }
-            let ownBundle = Bundle.main.bundleIdentifier ?? "io.github.devnjw.LessBar"
             // An unobserved divider must fail open instead of hiding the wrong apps.
             guard items.contains(where: { $0.bundle == ownBundle }),
                   let primary = NSScreen.screens.first else {
+                log.error("Native collapse rejected: Less Bar boundary missing from AX inventory or no display")
                 pending = false
                 completion(false)
                 return
@@ -344,6 +448,7 @@ final class NativeMenuBarVisibility {
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard let self, self.generation == token, pending else { return }
+            log.error("Native collapse timed out waiting for AX inventory")
             reveal()
             completion(false)
         }
@@ -354,6 +459,7 @@ final class NativeMenuBarVisibility {
         generation += 1
         pending = false
         recordingRestriction.release()
+        recordingOnHiddenSide = false
         appliedPlan = nil
         restrictedFrames = []
         do { try preferences.restore(releaseOwnership: releaseOwnership) }
