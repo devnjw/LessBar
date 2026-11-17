@@ -31,11 +31,36 @@ final class LengthMenuBarEngine {
     private var alwaysHidden: StatusBoundary?
     private var showDividers = false
     private var editing = false
+    private var nativeSelectionPending = false
     private var mirrorPadding: [Int: NSLayoutConstraint] = [:]
     private var mirrorIsSecondary: [Int: Bool] = [:]
     private(set) var isCollapsed = false
     private(set) var alwaysCollapsed = false
-    let isSupported = ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27
+    let usesNativeVisibility = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+    private let native = NativeMenuBarVisibility()
+    var isNativePending: Bool { native.pending }
+    var nativeFrames: [CGRect] { native.frames }
+    var needsNativePreferencesAccess: Bool { usesNativeVisibility && native.needsPreferencesAccess }
+    func requestNativePreferencesAccess(_ completion: @escaping @MainActor (Bool) -> Void) {
+        native.requestPreferencesAccess(completion)
+    }
+    func markNativeSelectionDirty() { native.markSelectionDirty() }
+    var isSupported: Bool { !usesNativeVisibility || NativeMenuBarVisibility.available }
+
+    func refreshNativeFrames() { if usesNativeVisibility { native.refreshFrames() } }
+
+    func collapseNative(completion: @escaping @MainActor (Bool) -> Void) {
+        guard let boundary = normal.item.button?.window?.frame, boundary.width > 0 else {
+            completion(false); return
+        }
+        native.collapse(boundary: boundary) { [weak self] succeeded in
+            guard let self else { return }
+            isCollapsed = succeeded
+            nativeSelectionPending = false
+            refreshLayout()
+            completion(succeeded)
+        }
+    }
     var isAllExpanded: Bool { !isCollapsed && !alwaysCollapsed }
     var normalItem: NSStatusItem { normal.item }
     var secondaryItem: NSStatusItem? { alwaysHidden?.item }
@@ -55,6 +80,11 @@ final class LengthMenuBarEngine {
     init(toggle: NSStatusItem) { normal = StatusBoundary(item: toggle) }
 
     func configure(showDividers: Bool, alwaysHiddenEnabled: Bool, editing: Bool) {
+        if usesNativeVisibility && self.editing && !editing {
+            // Retain the full divider until the post-drop snapshot has captured
+            // the final order. Shrinking it first moves its neighbours.
+            nativeSelectionPending = true
+        }
         self.showDividers = showDividers
         self.editing = editing
         if alwaysHiddenEnabled, alwaysHidden == nil {
@@ -76,6 +106,7 @@ final class LengthMenuBarEngine {
 
     @discardableResult
     func setCollapsed(_ collapsed: Bool) -> Bool {
+        guard !usesNativeVisibility else { return false }
         if collapsed && !isCollapsed && (!isSupported || !canCollapse) { return false }
         isCollapsed = collapsed && isSupported
         if collapsed { alwaysCollapsed = alwaysHidden != nil }
@@ -84,17 +115,30 @@ final class LengthMenuBarEngine {
     }
 
     func reveal(all: Bool) {
+        guard native.reveal() else { return }
+        nativeSelectionPending = false
         isCollapsed = false
-        alwaysCollapsed = alwaysHidden != nil && !all
+        alwaysCollapsed = !usesNativeVisibility && alwaysHidden != nil && !all
         refreshLayout()
     }
 
     func hideAlwaysHidden() {
+        guard !usesNativeVisibility else { return }
         alwaysCollapsed = alwaysHidden != nil
         refreshLayout()
     }
 
     func refreshLayout() {
+        if usesNativeVisibility {
+            normal.item.isVisible = true
+            // Keep the boundary at its saved location even without arrow artwork.
+            // macOS 27 ignores the old width-based hiding technique.
+            normal.set(collapsed: false, visible: showDividers || editing || nativeSelectionPending)
+            normal.item.button?.cell?.isEnabled = true
+            alwaysHidden?.set(collapsed: false, visible: editing)
+            synchronizeMirrorSpacing()
+            return
+        }
         // Update the left boundary before the right boundary to avoid momentarily
         // exposing the always-hidden group during ordinary reveal.
         alwaysHidden?.set(collapsed: alwaysCollapsed, visible: showDividers || editing)
@@ -132,10 +176,10 @@ final class LengthMenuBarEngine {
                 }
             }
             let secondary = mirrorIsSecondary[window.windowNumber] ?? false
-            let collapsed = secondary ? alwaysCollapsed : isCollapsed
-            let visible = collapsed || showDividers || editing
+            let collapsed = !usesNativeVisibility && (secondary ? alwaysCollapsed : isCollapsed)
+            let visible = collapsed || showDividers || editing || (usesNativeVisibility && nativeSelectionPending)
             mirrorPadding[window.windowNumber]?.isActive = visible
-            let length: CGFloat = collapsed ? collapsedLength : ((showDividers || editing) ? LayoutSafety.controlWidth : 0)
+            let length: CGFloat = collapsed ? collapsedLength : ((showDividers || editing || (usesNativeVisibility && nativeSelectionPending)) ? LayoutSafety.controlWidth : 0)
             // AppKit updates only the active display's content-width constraint on
             // macOS 26. Apply the same length to each retained native mirror.
             for view in content.subviews {
@@ -168,7 +212,11 @@ final class LengthMenuBarEngine {
     }
 
     func stop() {
-        reveal(all: true)
+        native.reveal(releaseOwnership: true)
+        nativeSelectionPending = false
+        isCollapsed = false
+        alwaysCollapsed = false
+        refreshLayout()
         if let alwaysHidden { NSStatusBar.system.removeStatusItem(alwaysHidden.item) }
         alwaysHidden = nil
     }

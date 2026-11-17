@@ -18,6 +18,7 @@ struct SettingsView: View {
     @ObservedObject var presentation = SettingsPresentation()
     let supported: Bool
     var requestAccessibility: () -> Void = {}
+    var requestNativePreferencesAccess: () -> Void = {}
 
     @State private var advancedExpanded = false
     @State private var languageExpanded = false
@@ -95,6 +96,17 @@ struct SettingsView: View {
                     Text(L10n.accessibilityNeeded).font(.system(size: 11)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Button(L10n.allowAccessibility, action: requestAccessibility)
+                        .buttonStyle(.bordered)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
+            }
+
+            if state.nativePreferencesNeeded {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.nativePreferencesExplanation).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(L10n.nativePreferencesTitle, action: requestNativePreferencesAccess)
                         .buttonStyle(.bordered)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

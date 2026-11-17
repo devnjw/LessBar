@@ -82,7 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let view = SettingsView(preferences: preferences, state: menuBar.state,
                 presentation: settingsPresentation,
                 supported: menuBar.isSupported,
-                requestAccessibility: { [weak menuBar] in menuBar?.requestAccessibility() })
+                requestAccessibility: { [weak menuBar] in menuBar?.requestAccessibility() },
+                requestNativePreferencesAccess: { [weak menuBar] in menuBar?.requestNativePreferencesAccess() })
             settingsWindow = SettingsWindowController(rootView: view, onClose: { [weak menuBar] in
                 menuBar?.setSettingsOpen(false)
             })

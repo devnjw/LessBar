@@ -13,7 +13,7 @@ Hide menu bar icons, then reveal them with the arrow or by hovering over or clic
 
 The release notes state whether a build is Apple-notarized. A file labeled **unnotarized** is a developer preview and may be blocked by macOS. Prefer a notarized release; do not disable Gatekeeper. Developers can also [build from source](#build-from-source).
 
-**Requirements:** macOS 13–26. Hiding is disabled on macOS 27 and later. Currently tested interactively on macOS 26.6.2 / Apple Silicon; Intel binaries are built, but Intel hardware and older macOS versions still need testing.
+**Requirements:** macOS 13 or later. macOS 13–26 uses the width-based engine. macOS 27+ uses an experimental backend that requires Accessibility access and permission to read and update the Control Center menu-bar preferences file. It also uses dynamically resolved private APIs and an undocumented preferences schema, so future system updates may make it unavailable. Hidden-area click/hover, repeated hide/reveal without the reported overlap, and left/right placement of the original recording indicator and Text Input were verified interactively on macOS 27.2.1 / Apple Silicon. Intel hardware, older systems and additional display configurations still need testing.
 
 ## Use
 
@@ -28,15 +28,21 @@ Expand **Language** in Settings and select **System Default**, **English**, or *
 
 Reopen Less Bar from Applications to show all icons and open settings. Quitting restores hidden icons. Display changes briefly expand the icons while layout settles, then restore the previous shared visibility state.
 
-With Accessibility access, Less Bar automatically moves the active screen-sharing control into the always-visible section to the right of its arrow. It leaves controls that are already on the right in place. If macOS rejects the move, settings show a message and the control stays visible; reopening Less Bar retries it.
+On macOS 13–26, with Accessibility access, Less Bar automatically moves the active screen-sharing control into the always-visible section to the right of its arrow. It leaves controls that are already on the right in place. If macOS rejects the move, settings show a message and the control stays visible; reopening Less Bar retries it.
 
 Less Bar also checks for menu bar overlap and moves its reveal button away from other items. It briefly retries during system layout changes and expands if a safe position cannot be found.
 
-This is an early release using a status item's width to hide neighbors. Notched displays can still run out of space; Less Bar does not copy icons into a second bar. Visibility is synchronized across native menu bars; full-screen Spaces, notched or differently arranged displays, Intel hardware and older systems still need further interactive testing. It cannot restore icons disabled in another app's preferences.
+On macOS 27+, choose **Allow Menu Bar Settings** when prompted and select `group.com.apple.controlcenter.plist` in the file picker. If the file is not shown, press **⇧⌘G** in the picker and enter `~/Library/Group Containers/group.com.apple.controlcenter/Library/Preferences/group.com.apple.controlcenter.plist`. This grants access to that specific preferences file, not Full Disk Access. Less Bar records its changes before hiding icons, restores only its own changes on reveal or quit, and attempts recovery after an interrupted session. Apps already disabled by the user are left alone. If recovery cannot complete, keep the record and use System Settings → Menu Bar to check the affected apps.
+
+The original macOS recording control follows the boundary; it is not replaced with a copied icon. **When it is in the hidden section, macOS's restriction also suppresses some other system controls, including Focus, AirDrop and Now Playing, regardless of their positions.** Putting the recording control on the visible side avoids that restriction. Ordinary app icons use one hiding mechanism per transition to avoid overlapping reflows. Text Input uses its own native visibility preference.
+
+Multiple icons belonging to one app may share visibility; the legacy always-hidden section stays expanded on macOS 27+. The system's native fade remains. Menu-bar hover tooltips are intentionally disabled. Missing permissions or failed activation leave icons visible; reopening and quitting release active restrictions.
+
+This is an early release. The macOS 13–26 engine uses a status item's width to hide neighbors. Notched displays can still run out of space; Less Bar does not copy icons into a second bar. Visibility is synchronized across native menu bars; full-screen Spaces, notched or differently arranged displays, Intel hardware and older systems still need further interactive testing. It cannot restore icons disabled in another app's preferences.
 
 ## Privacy
 
-No analytics, network requests, account or Screen Recording access. Accessibility access identifies the system screen-sharing control and reorders it using Command-drag events. Empty-space hover and click detection use the same permission to read application-menu positions and sizes. The app reads menu bar identifiers and geometry without capturing images or titles. Launch at Login is opt-in and managed by macOS.
+No analytics, network requests, account or Screen Recording access. Accessibility access identifies the system screen-sharing control and reorders it using Command-drag events. Empty-space hover and click detection use the same permission to read application-menu positions and sizes. On macOS 27+, measured app identities and original system-item identifiers filter occupied rectangles, so hidden icons do not block hover or click in their former locations. The preferences-file grant permits only menu-bar visibility changes; original values are recorded for recovery. The app reads menu bar identifiers and geometry without capturing images or titles. Launch at Login is opt-in and managed by macOS.
 
 ## Build from source
 
@@ -62,7 +68,7 @@ See [Architecture](docs/ARCHITECTURE.md), [Contributing](CONTRIBUTING.md) and [R
 
 ## License
 
-[MIT](LICENSE). The repository and initial preview are available at no charge.
+[MIT](LICENSE). The repository and initial preview are available at no charge. The native visibility bridge is adapted from Hidden Bar by Dwarves Foundation; its [MIT license](Sources/NativeVisibility/LICENSE) is included in the app bundle.
 
 ## Settings
 

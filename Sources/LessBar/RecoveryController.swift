@@ -60,7 +60,8 @@ final class RecoveryController: NSObject {
                 $0.offsetBy(dx: -anchor.control.minX, dy: -anchor.control.minY)
             }
             button.setAccessibilityLabel(L10n.showIcons)
-            button.toolTip = L10n.recoveryTooltip
+            button.toolTip = nil
+            button.removeAllToolTips()
             button.onReveal = { [weak self, weak panel] in
                 DispatchQueue.main.async { [weak self, weak panel] in
                     guard let self, let panel, self.sessions.values.contains(where: { $0.panel === panel }) else { return }
